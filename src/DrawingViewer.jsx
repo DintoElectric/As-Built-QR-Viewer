@@ -162,10 +162,12 @@ export default function DrawingViewer({ sheet, panel, linked, sheetId, onPickShe
   const placements = boxPlacements(sheet, panel);
   const labelCount = distinctLabels(placements).length;
   const offFloor = sheet ? sheetFloor(sheet.id) !== floorOf(panel) : false;
+  const panelHere = sheet ? (sheet.panels || []).some((p) => p.panel === panel) : false;
   const note = sheet
     ? `${labelCount} J-box tag${labelCount === 1 ? '' : 's'} name ${panel}, boxed on the sheet` +
       (offFloor ? ` (${sheetFloor(sheet.id).toLowerCase()} sheet ↗)` : '') +
-      '. Parentheses are box tags, not circuits.'
+      '. Parentheses are box tags, not circuits.' +
+      (panelHere ? ` Panel ${panel} is drawn on this sheet — its callout is boxed.` : '')
     : '';
 
   return (
@@ -231,7 +233,7 @@ export default function DrawingViewer({ sheet, panel, linked, sheetId, onPickShe
         <div className="gridpaper empty-well">
           <div className="empty-msg">
             No drawing linked to this panel.<br />
-            No J-box on the loaded sheets (E35-02/03/04 A–C) is tagged to it.
+            No J-box on the loaded sheets (E35-02/03/04/05 A–C) is tagged to it.
           </div>
         </div>
       )}
@@ -242,6 +244,8 @@ export default function DrawingViewer({ sheet, panel, linked, sheetId, onPickShe
 // The tags are stacked callout text, not symbol positions — so the highlight is
 // a box drawn over the printed label itself, which lands on the text the user
 // reads. Matching panel's boxes glow + fill; every other tag is a faint outline.
+// Panel callouts (grey-boxed panel names) get the same treatment on their own
+// layer: the selected panel's callout is boxed heavily, others faintly.
 // No dot markers, no run lines (the parenthetical is a box tag, not a circuit).
 function buildOverlay(sheet, panel, zoom, hasImg) {
   const h = 1000 * sheet.pdfH / sheet.pdfW; // do NOT round — rounding reintroduces the aspect drift
@@ -278,6 +282,35 @@ function buildOverlay(sheet, panel, zoom, hasImg) {
     );
   });
 
+  // Panel callouts (grey-boxed panel names on the plan). Same box-over-the-text
+  // technique as J-boxes, but the SELECTED panel's own callout gets a heavier,
+  // solid fill so "the panel itself" reads distinctly from "its J-boxes" (both
+  // are highlighted at once). Every other callout gets a faint accent-tinted
+  // outline so panels stay identifiable without competing with the selection.
+  const panelEls = [];
+  (sheet.panels || []).forEach((pnl, i) => {
+    const x = 1000 * pnl.x;
+    const y = h * (pnl.y - pnl.h);
+    const w = 1000 * pnl.w;
+    const bh = h * pnl.h;
+    if (pnl.panel === panel) {
+      const p = 2.2 / k;
+      const bx = x - p, by = y - p, bw = w + 2 * p, bhh = bh + 2 * p;
+      panelEls.push(
+        <rect key={'pg' + i} x={bx - 1.6 * p} y={by - 1.6 * p} width={bw + 3.2 * p} height={bhh + 3.2 * p} rx={3.5} fill="rgba(145,132,217,.20)" />
+      );
+      panelEls.push(
+        <rect key={'ph' + i} x={bx} y={by} width={bw} height={bhh} rx={2.5} fill="rgba(145,132,217,.34)" stroke="#b7aef2" strokeWidth={2.2 / k} />
+      );
+    } else {
+      const pad = 1.1 / k;
+      panelEls.push(
+        <rect key={'po' + i} x={x - pad} y={y - pad} width={w + 2 * pad} height={bh + 2 * pad} rx={2}
+          fill="none" stroke="rgba(145,132,217,.22)" strokeWidth={0.8 / k} />
+      );
+    }
+  });
+
   return (
     <svg
       viewBox={'0 0 1000 ' + h}
@@ -289,6 +322,7 @@ function buildOverlay(sheet, panel, zoom, hasImg) {
     >
       {others}
       {hitEls}
+      {panelEls}
     </svg>
   );
 }
