@@ -31,6 +31,7 @@ export default function App() {
   const [sel, setSel] = useState(null);
   const [q, setQ] = useState('');
   const [pick, setPick] = useState(null);
+  const [selCircuit, setSelCircuit] = useState(null); // circuit filter: highlight only boxes carrying it
   const [floor, setFloor] = useState('All');
   const [sheetId, setSheetId] = useState(null);
   const [full, setFull] = useState(false);
@@ -85,15 +86,26 @@ export default function App() {
   }, [q, searching, panels, floor]);
 
   // Selecting a panel clears the query and trace, and resets the sheet choice.
-  const selectPanel = (name) => { setSel(name); setQ(''); setPick(null); setSheetId(null); };
-  // A search hit selects the panel AND opens its circuit detail in one step.
+  const selectPanel = (name) => { setSel(name); setQ(''); setPick(null); setSelCircuit(null); setSheetId(null); };
+  // A search hit selects the panel, opens its circuit detail, AND filters to that circuit.
   const openResult = (r) => {
     setSel(r.panel); setQ(''); setSheetId(null);
     setPick({ tag: r.panel + ' · ckt ' + r.n, desc: r.desc, bk: r.bk });
+    setSelCircuit(r.n != null ? String(r.n) : null);
+  };
+  // Toggle the circuit filter from a schedule row.
+  const toggleCircuit = (c) => {
+    const cn = String(c.n);
+    if (selCircuit === cn) { setSelCircuit(null); setPick(null); }
+    else { setSelCircuit(cn); setPick({ tag: panel.panel + ' · ckt ' + c.n, desc: c.desc, bk: breaker(c) }); }
   };
 
   const placements = boxPlacements(sheet, sel);
   const hitLabels = distinctLabels(placements).sort(naturalSort);
+  // Boxes on the current sheet that carry the selected circuit for this panel.
+  const circuitLabels = (sheet && selCircuit)
+    ? distinctLabels(placements.filter((b) => (b.circuits || []).includes(selCircuit))).sort(naturalSort)
+    : [];
 
   const oddRows = panel ? panel.circuits.filter((c) => c.n % 2 === 1) : [];
   const evenRows = panel ? panel.circuits.filter((c) => c.n % 2 === 0) : [];
@@ -180,10 +192,17 @@ export default function App() {
 
                 {pick && (
                   <div className="card elev-sm trace-card">
-                    <div className="card-kicker">{pick.tag} · traced</div>
+                    <div className="card-kicker">{pick.tag}{selCircuit ? ' · filtering boxes' : ' · traced'}</div>
                     <div style={{ fontSize: 14 }}>{pick.desc}</div>
                     <div className="mono" style={{ fontSize: 12, color: 'var(--color-text-2)' }}>{pick.bk}</div>
-                    <div><button className="btn btn-ghost" onClick={() => setPick(null)}>Clear trace</button></div>
+                    {selCircuit && (
+                      <div style={{ fontSize: 12.5, color: 'var(--color-text-2)' }}>
+                        {circuitLabels.length
+                          ? `${circuitLabels.length} J-box${circuitLabels.length === 1 ? '' : 'es'} on circuit ${selCircuit}${sheet ? ' (this sheet)' : ''} highlighted.`
+                          : `No J-box on this sheet carries circuit ${selCircuit}${placements.some((b) => b.circuits) ? '.' : ' — circuit data not entered for this panel yet.'}`}
+                      </div>
+                    )}
+                    <div><button className="btn btn-ghost" onClick={() => { setPick(null); setSelCircuit(null); }}>{selCircuit ? 'Clear circuit filter' : 'Clear trace'}</button></div>
                   </div>
                 )}
 
@@ -193,8 +212,10 @@ export default function App() {
                       <div className="chd"><span>Ckt</span><span>Description</span><span style={{ textAlign: 'right' }}>Breaker</span></div>
                       {rows.map((c) => {
                         const spare = isSpare(c);
+                        const on = selCircuit === String(c.n);
                         return (
-                          <button key={c.n} className="crow" onClick={() => setPick({ tag: panel.panel + ' · ckt ' + c.n, desc: c.desc, bk: breaker(c) })}>
+                          <button key={c.n} className="crow" onClick={() => toggleCircuit(c)}
+                            style={on ? { background: 'var(--color-surface)', boxShadow: 'inset 0 0 0 1px var(--color-accent)' } : undefined}>
                             <span className="mono" style={{ fontSize: 13, color: spare ? 'var(--color-faint)' : 'var(--color-accent)' }}>{c.n}</span>
                             <span style={{ fontSize: 13.5, color: spare ? 'var(--color-muted)' : 'var(--color-text)' }}>{c.desc}</span>
                             <span className="mono" style={{ fontSize: 12, textAlign: 'right', color: 'var(--color-text-2)' }}>{breaker(c)}</span>
@@ -215,6 +236,7 @@ export default function App() {
         <DrawingViewer
           sheet={sheet}
           panel={sel}
+          selCircuit={selCircuit}
           linked={linked}
           sheetId={sheet ? sheet.id : null}
           onPickSheet={setSheetId}
