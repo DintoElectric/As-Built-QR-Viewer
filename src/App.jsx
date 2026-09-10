@@ -22,6 +22,40 @@ function panelFromSlug(slug, panels) {
   return null;
 }
 
+// Build two-column schedule rows (odd left, even right), merging multi-pole
+// breakers across the rows they occupy — matches the printed panel-schedule.
+function buildScheduleRows(circuits) {
+  const byN = {}; circuits.forEach((c) => { byN[c.n] = c; });
+  const maxN = circuits.length ? Math.max(...circuits.map((c) => c.n)) : 0;
+  const nRows = Math.ceil(maxN / 2);
+  const side = (first) => {
+    const cells = {}; let cn = first;
+    while (cn <= maxN) {
+      const c = byN[cn];
+      if (c) {
+        const p = c.poles || 1;
+        cells[cn] = { kind: 'cell', span: p, c };
+        for (let k = 1; k < p; k++) cells[cn + 2 * k] = { kind: 'covered' };
+        cn += 2 * p;
+      } else { if (!cells[cn]) cells[cn] = { kind: 'empty' }; cn += 2; }
+    }
+    return cells;
+  };
+  const L = side(1), R = side(2);
+  const rows = [];
+  for (let i = 0; i < nRows; i++) rows.push({ lc: 2 * i + 1, l: L[2 * i + 1], rc: 2 * i + 2, r: R[2 * i + 2] });
+  return { rows, maxN };
+}
+
+// The poles/amps/description cells for one circuit (or blanks / nothing when the
+// slot is an empty circuit / covered by a multi-pole breaker above it).
+function ScheduleCells({ cell }) {
+  if (!cell || cell.kind === 'empty') return (<><td></td><td></td><td className="d"></td></>);
+  if (cell.kind === 'covered') return null;
+  const c = cell.c;
+  return (<><td rowSpan={cell.span}>{c.poles || 1}</td><td rowSpan={cell.span}>{c.amps || ''}</td><td rowSpan={cell.span} className="d">{c.desc}</td></>);
+}
+
 export default function App() {
   const { slug } = useParams();
   const [panels, setPanels] = useState([]);
@@ -111,6 +145,30 @@ export default function App() {
   const evenRows = panel ? panel.circuits.filter((c) => c.n % 2 === 0) : [];
   const spareCount = panel ? panel.circuits.filter(isSpare).length : 0;
 
+  const schedule = panel ? buildScheduleRows(panel.circuits) : { rows: [], maxN: 0 };
+
+  // Load the QR lib on demand, draw the code into the print header, then print.
+  // The browser dialog offers both "Print" and "Save as PDF".
+  const ensureQR = () => new Promise((resolve) => {
+    if (window.QRCode) return resolve();
+    const el = document.createElement('script');
+    el.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+    el.onload = resolve; el.onerror = resolve; document.head.appendChild(el);
+  });
+  const printSchedule = async () => {
+    if (!panel) return;
+    await ensureQR();
+    const holder = document.getElementById('print-qr');
+    if (holder && window.QRCode) {
+      holder.innerHTML = '';
+      new window.QRCode(holder, {
+        text: window.location.origin + '/p/' + encodeURIComponent(panel.panel),
+        width: 92, height: 92, correctLevel: window.QRCode.CorrectLevel.M,
+      });
+    }
+    setTimeout(() => window.print(), 250);
+  };
+
   const gridCols = full ? 'minmax(0,1fr)' : '196px 300px minmax(0,1fr)';
 
   return (
@@ -180,6 +238,7 @@ export default function App() {
                 <div className="scanned"><span className="scanned-dot" />Scanned · panel label</div>
                 <div className="mono designation">{panel.panel}</div>
                 <div className="source-line">{sourceLabel(panel)} · {panel.circuits.length} circuits scheduled · {spareCount} spare</div>
+                <div style={{ marginTop: 10 }}><button className="btn btn-secondary" onClick={printSchedule}>Export / print schedule (PDF)</button></div>
 
                 {hitLabels.length > 0 && (
                   <div className="jbox-block">
@@ -244,6 +303,46 @@ export default function App() {
           onToggleFull={() => setFull((v) => !v)}
         />
       </div>
+
+      {/* Print-only panel schedule (browser Print / Save-as-PDF). QR top-right. */}
+      {panel && (
+        <div className="print-schedule">
+          <div className="ps-head">
+            <img className="ps-logo" src="/dinto-logo.png" alt="Dinto Electrical Contractors" />
+            <div className="ps-title">PANEL: {panel.panel}</div>
+            <div className="ps-meta">
+              <div>PANEL LOCATION: {panel.meta ? panel.meta.location : ''}</div>
+              <div>DATE TYPED: {panel.meta ? panel.meta.date : ''}</div>
+              <div className="sp">VOLTAGE:&nbsp; {panel.meta ? panel.meta.voltage : ''}</div>
+              <div>PH/WIRE:&nbsp; {panel.meta ? panel.meta.phwire : ''}</div>
+              <div>FED FROM: {panel.meta ? panel.meta.fedfrom : ''}</div>
+            </div>
+            <div id="print-qr" className="ps-qr" />
+          </div>
+          <table className="ps-table">
+            <thead>
+              <tr>
+                <th>CKT#</th><th>Poles</th><th>Amps</th><th>Description</th>
+                <th>CKT#</th><th>Poles</th><th>Amps</th><th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              {schedule.rows.map((row, i) => (
+                <tr key={i}>
+                  <td className="ckt">{row.lc <= schedule.maxN ? row.lc : ''}</td>
+                  <ScheduleCells cell={row.l} />
+                  <td className="ckt">{row.rc <= schedule.maxN ? row.rc : ''}</td>
+                  <ScheduleCells cell={row.r} />
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="ps-foot">
+            <div>121 Turnpike Drive | Middlebury, CT 06762 | Tel: 203-575-9473</div>
+            <div>DINTOELECTRIC.COM | CT State Electrical License #100760 | AA/EOE</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
