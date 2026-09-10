@@ -18,7 +18,7 @@ const MAX_ZOOM = 16;
 
 function getDoc(id) {
   if (!docCache.has(id)) {
-    docCache.set(id, pdfjsLib.getDocument('drawings/' + id + '.pdf').promise);
+    docCache.set(id, pdfjsLib.getDocument('/drawings/' + id + '.pdf').promise);
   }
   return docCache.get(id);
 }
