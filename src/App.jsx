@@ -40,8 +40,8 @@ export default function App() {
   useEffect(() => {
     let alive = true;
     Promise.all([
-      fetch('data/panels.json').then((r) => r.json()),
-      fetch('data/drawings.json').then((r) => r.json()),
+      fetch('/data/panels.json').then((r) => r.json()),
+      fetch('/data/drawings.json').then((r) => r.json()),
     ]).then(([pd, dd]) => {
       if (!alive) return;
       setPanels(pd.panels);
