@@ -31,7 +31,10 @@ function today() {
 }
 
 export default async (req) => {
-  const store = getStore('asbuilt-overrides');
+  // Writes read-modify-write the same blob, so use STRONG consistency for those
+  // (so each save is based on the latest data and can't clobber a prior change).
+  // Public GETs can stay eventual (faster).
+  const store = getStore({ name: 'asbuilt-overrides', consistency: req.method === 'POST' ? 'strong' : 'eventual' });
 
   if (req.method === 'GET') {
     const data = (await store.get(KEY, { type: 'json' })) || EMPTY;
