@@ -172,6 +172,7 @@ export default function App() {
   const gridCols = full ? 'minmax(0,1fr)' : '196px 300px minmax(0,1fr)';
 
   return (
+    <>
     <div className="app">
       <header className="topbar">
         <span className="wordmark">Dinto <span className="wordmark-2">As-Builts</span></span>
@@ -303,6 +304,7 @@ export default function App() {
           onToggleFull={() => setFull((v) => !v)}
         />
       </div>
+    </div>
 
       {/* Print-only panel schedule (browser Print / Save-as-PDF). QR top-right. */}
       {panel && (
@@ -343,6 +345,6 @@ export default function App() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
