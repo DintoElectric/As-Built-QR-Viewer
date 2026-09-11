@@ -179,7 +179,7 @@ button:focus:not(:focus-visible) { outline: none; }
 /* Circuit table row + header */
 .crow {
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr) 60px;
+  grid-template-columns: 16px 26px minmax(0, 1fr) 58px;
   gap: 8px;
   align-items: start;
   padding: 8px;
@@ -195,7 +195,7 @@ button:focus:not(:focus-visible) { outline: none; }
 .crow span { min-width: 0; overflow-wrap: break-word; }
 .chd {
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr) 60px;
+  grid-template-columns: 16px 26px minmax(0, 1fr) 58px;
   gap: 8px;
   font-size: 10px;
   letter-spacing: 0.08em;
@@ -437,17 +437,15 @@ button:focus:not(:focus-visible) { outline: none; }
 .lamp.off { background: #e5484d; }
 .lamp.big { width: 14px; height: 14px; }
 
-/* live/dead bar in the panel view */
-.status-bar {
+/* per-circuit live/dead summary in the panel view */
+.status-summary {
   display: flex; align-items: center; gap: 10px;
   margin-top: 16px; padding: 9px 12px; border-radius: 8px; font-size: 13px;
+  background: var(--color-surface); box-shadow: inset 0 0 0 1px var(--color-hairline);
 }
-.status-bar.live { background: rgba(47, 191, 78, 0.12); box-shadow: inset 0 0 0 1px rgba(47, 191, 78, 0.5); }
-.status-bar.dead { background: rgba(229, 72, 77, 0.10); box-shadow: inset 0 0 0 1px rgba(229, 72, 77, 0.45); }
-.status-text { font-weight: 600; letter-spacing: 0.02em; }
-.status-bar.live .status-text { color: #4ad168; }
-.status-bar.dead .status-text { color: #ef6a6e; }
-.status-since { font-size: 11px; color: var(--color-muted); }
+.status-summary.has-live { box-shadow: inset 0 0 0 1px rgba(47, 191, 78, 0.45); }
+.status-summary .status-text { font-weight: 600; letter-spacing: 0.02em; color: var(--color-text-2); }
+.status-summary .bulk { margin-left: auto; display: flex; gap: 6px; }
 
 /* always-on disclaimer, fixed to the bottom of the viewport */
 .disclaimer {
@@ -463,11 +461,14 @@ button:focus:not(:focus-visible) { outline: none; }
 /* ---- Admin inline circuit editing ---- */
 .edit-hint { margin-top: 22px; font-size: 11px; color: var(--color-muted); }
 .ehd {
-  display: grid; grid-template-columns: 26px minmax(0, 1fr) 40px 34px auto; gap: 4px;
+  display: grid; grid-template-columns: 20px 24px minmax(0, 1fr) 38px 32px auto; gap: 4px;
   font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-muted);
   padding: 0 4px 6px; border-bottom: 1px solid rgba(233, 233, 237, 0.14);
 }
-.erow { display: grid; grid-template-columns: 26px minmax(0, 1fr) 40px 34px auto; gap: 4px; align-items: center; padding: 3px 4px; }
+.erow { display: grid; grid-template-columns: 20px 24px minmax(0, 1fr) 38px 32px auto; gap: 4px; align-items: center; padding: 3px 4px; }
+.lamp-tog { border: 0; background: transparent; cursor: pointer; padding: 3px; display: flex; align-items: center; justify-content: center; border-radius: 4px; }
+.lamp-tog:hover { background: color-mix(in srgb, var(--color-text) 8%, transparent); }
+.lamp-tog:disabled { opacity: 0.5; cursor: default; }
 .erow-ckt { border: 0; background: transparent; color: var(--color-accent); font: 400 12px var(--mono); cursor: pointer; border-radius: 4px; padding: 2px; }
 .erow-ckt[data-on="1"] { box-shadow: inset 0 0 0 1px var(--color-accent); }
 .einput { min-width: 0; width: 100%; background: var(--color-surface); border: 1px solid var(--control-border); border-radius: 5px; color: var(--color-text); font-size: 12px; padding: 3px 5px; }
