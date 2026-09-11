@@ -71,6 +71,8 @@ export default function App() {
   const [code, setCode] = useState('');
   const [loginErr, setLoginErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [edits, setEdits] = useState({});      // circuit edits in progress, keyed by ckt #
+  const [savingN, setSavingN] = useState(null);
 
   const [sel, setSel] = useState(null);
   const [q, setQ] = useState('');
@@ -156,7 +158,7 @@ export default function App() {
     return out;
   }, [q, searching, panels, floor]);
 
-  const selectPanel = (name) => { setSel(name); setQ(''); setPick(null); setSelCircuit(null); setSheetId(null); };
+  const selectPanel = (name) => { setSel(name); setQ(''); setPick(null); setSelCircuit(null); setSheetId(null); setEdits({}); };
   const openResult = (r) => {
     setSel(r.panel); setQ(''); setSheetId(null);
     setPick({ tag: r.panel + ' · ckt ' + r.n, desc: r.desc, bk: r.bk });
@@ -195,6 +197,29 @@ export default function App() {
     setBusy(false);
   };
 
+  const setField = (c, field, value) => setEdits((prev) => {
+    const base = prev[c.n] || { desc: c.desc || '', amps: c.amps ?? '', poles: c.poles ?? '' };
+    return { ...prev, [c.n]: { ...base, [field]: value } };
+  });
+  const saveCircuit = async (c) => {
+    if (!admin || !panel) return;
+    const v = edits[c.n]; if (!v) return;
+    setSavingN(c.n);
+    try {
+      const r = await fetch(FN_OVR, {
+        method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + token },
+        body: JSON.stringify({ action: 'editCircuit', panel: panel.panel, n: c.n, desc: v.desc, amps: v.amps, poles: v.poles }),
+      });
+      if (r.status === 401) { logout(); setLoginErr('Session expired — log in again.'); }
+      const d = await r.json().catch(() => null);
+      if (d && d.data) {
+        setOverrides({ status: d.data.status || {}, circuits: d.data.circuits || {}, edited: d.data.edited || {} });
+        setEdits((prev) => { const n = { ...prev }; delete n[c.n]; return n; });
+      }
+    } catch { /* ignore */ }
+    setSavingN(null);
+  };
+
   const placements = boxPlacements(sheet, sel);
   const hitLabels = distinctLabels(placements).sort(naturalSort);
   const circuitLabels = (sheet && selCircuit)
@@ -223,7 +248,7 @@ export default function App() {
     setTimeout(() => window.print(), 250);
   };
 
-  const gridCols = full ? 'minmax(0,1fr)' : '196px 300px minmax(0,1fr)';
+  const gridCols = full ? 'minmax(0,1fr)' : (admin ? '196px 380px minmax(0,1fr)' : '196px 300px minmax(0,1fr)');
   const live = panel ? statusOf(panel.panel) : false;
 
   return (
@@ -344,13 +369,34 @@ export default function App() {
                   </div>
                 )}
 
+                {admin && <div className="edit-hint">Admin — edit description / amps / poles below; Save stamps DATE TYPED.</div>}
                 <div className="ckt-cols">
                   {[oddRows, evenRows].map((rows, ci) => (
                     <div key={ci}>
-                      <div className="chd"><span>Ckt</span><span>Description</span><span style={{ textAlign: 'right' }}>Breaker</span></div>
+                      {admin ? (
+                        <div className="ehd"><span>Ckt</span><span>Description</span><span>A</span><span>P</span><span /></div>
+                      ) : (
+                        <div className="chd"><span>Ckt</span><span>Description</span><span style={{ textAlign: 'right' }}>Breaker</span></div>
+                      )}
                       {rows.map((c) => {
                         const spare = isSpare(c);
                         const on = selCircuit === String(c.n);
+                        if (admin) {
+                          const e = edits[c.n];
+                          const dv = e ? e.desc : (c.desc || '');
+                          const av = e ? e.amps : (c.amps ?? '');
+                          const pv = e ? e.poles : (c.poles ?? '');
+                          const dirty = e && (String(dv) !== String(c.desc || '') || String(av) !== String(c.amps ?? '') || String(pv) !== String(c.poles ?? ''));
+                          return (
+                            <div className="erow" key={c.n}>
+                              <button className="erow-ckt" data-on={on ? '1' : '0'} onClick={() => toggleCircuit(c)} title="Highlight J-boxes on this circuit">{c.n}</button>
+                              <input className="einput" value={dv} placeholder="description" onChange={(ev) => setField(c, 'desc', ev.target.value)} />
+                              <input className="einput num" value={av} inputMode="numeric" placeholder="A" onChange={(ev) => setField(c, 'amps', ev.target.value)} />
+                              <input className="einput num" value={pv} inputMode="numeric" placeholder="P" onChange={(ev) => setField(c, 'poles', ev.target.value)} />
+                              {dirty ? <button className="btn btn-primary esave" disabled={savingN === c.n} onClick={() => saveCircuit(c)}>{savingN === c.n ? '…' : 'Save'}</button> : <span />}
+                            </div>
+                          );
+                        }
                         return (
                           <button key={c.n} className="crow" onClick={() => toggleCircuit(c)}
                             style={on ? { background: 'var(--color-surface)', boxShadow: 'inset 0 0 0 1px var(--color-accent)' } : undefined}>
