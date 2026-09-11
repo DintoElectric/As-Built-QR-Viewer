@@ -475,3 +475,7 @@ button:focus:not(:focus-visible) { outline: none; }
 .einput.num { text-align: center; padding: 3px 2px; }
 .einput:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
 .esave { padding: 3px 8px; font-size: 11px; }
+
+/* Multi-pole continuation rows (poles 3, 5 … of a shared breaker) */
+.cont { min-width: 0; overflow-wrap: anywhere; color: var(--color-muted); }
+.crow.covered, .erow.covered { padding-top: 2px; padding-bottom: 2px; }
