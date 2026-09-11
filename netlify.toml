@@ -2,7 +2,12 @@
   command = "npm run build"
   publish = "dist"
 
-# SPA fallback for the QR deep-link route /p/:slug
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# Function routes are matched before this SPA fallback, so /.netlify/functions/*
+# still reaches the functions. This keeps the QR deep-link route /p/:slug working.
 [[redirects]]
   from = "/*"
   to = "/index.html"
