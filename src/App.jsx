@@ -73,6 +73,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [edits, setEdits] = useState({});      // circuit edits in progress, keyed by ckt #
   const [savingN, setSavingN] = useState(null);
+  const [statusBusyN, setStatusBusyN] = useState(null);
 
   const [sel, setSel] = useState(null);
   const [q, setQ] = useState('');
@@ -128,8 +129,8 @@ export default function App() {
     return { ...p, circuits, meta };
   }), [rawPanels, overrides]);
 
-  const statusOf = (name) => !!(overrides.status[name] && overrides.status[name].live);
-  const statusAt = (name) => (overrides.status[name] && overrides.status[name].at) || null;
+  const circuitLive = (name, n) => { const s = overrides.status[name]; return !!(s && s[String(n)] && s[String(n)].live); };
+  const panelAnyLive = (name) => { const s = overrides.status[name]; return !!(s && Object.values(s).some((v) => v && v.live)); };
 
   const totalCircuits = useMemo(() => panels.reduce((s, p) => s + p.circuits.length, 0), [panels]);
   const inFloor = (p) => floor === 'All' || floorOf(p.panel) === floor;
@@ -182,13 +183,27 @@ export default function App() {
     setBusy(false);
   };
   const logout = () => { sessionStorage.removeItem('adminToken'); setToken(''); };
-  const setStatus = async (live) => {
+  const setCircuitStatus = async (c, live) => {
+    if (!admin || !panel) return;
+    setStatusBusyN(c.n);
+    try {
+      const r = await fetch(FN_OVR, {
+        method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + token },
+        body: JSON.stringify({ action: 'setStatus', panel: panel.panel, n: c.n, live }),
+      });
+      if (r.status === 401) { logout(); setLoginErr('Session expired — log in again.'); }
+      const d = await r.json().catch(() => null);
+      if (d && d.data) setOverrides({ status: d.data.status || {}, circuits: d.data.circuits || {}, edited: d.data.edited || {} });
+    } catch { /* ignore */ }
+    setStatusBusyN(null);
+  };
+  const setAllStatus = async (live) => {
     if (!admin || !panel) return;
     setBusy(true);
     try {
       const r = await fetch(FN_OVR, {
         method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + token },
-        body: JSON.stringify({ action: 'setStatus', panel: panel.panel, live }),
+        body: JSON.stringify({ action: 'setAllStatus', panel: panel.panel, live, ns: panel.circuits.map((c) => c.n) }),
       });
       if (r.status === 401) { logout(); setLoginErr('Session expired — log in again.'); }
       const d = await r.json().catch(() => null);
@@ -249,7 +264,7 @@ export default function App() {
   };
 
   const gridCols = full ? 'minmax(0,1fr)' : (admin ? '196px 380px minmax(0,1fr)' : '196px 300px minmax(0,1fr)');
-  const live = panel ? statusOf(panel.panel) : false;
+  const liveCount = panel ? panel.circuits.filter((c) => circuitLive(panel.panel, c.n)).length : 0;
 
   return (
     <>
@@ -299,7 +314,7 @@ export default function App() {
                   <div className="floor-head">{g}</div>
                   {items.map((p) => (
                     <button key={p.panel} className="pbtn" data-on={p.panel === sel ? '1' : '0'} onClick={() => selectPanel(p.panel)}>
-                      <span className={'lamp ' + (statusOf(p.panel) ? 'on' : 'off')} title={statusOf(p.panel) ? 'Live' : 'Dead'} />
+                      <span className={'lamp ' + (panelAnyLive(p.panel) ? 'on' : 'off')} title={panelAnyLive(p.panel) ? 'Has live circuits' : 'No live circuits'} />
                       <span className="mono" style={{ fontSize: 13 }}>{p.panel}</span>
                       <span className="mono" style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--color-muted)' }}>{p.circuits.length}</span>
                     </button>
@@ -332,15 +347,15 @@ export default function App() {
                 <div className="mono designation">{panel.panel}</div>
                 <div className="source-line">{sourceLabel(panel)} · {panel.circuits.length} circuits scheduled · {spareCount} spare</div>
 
-                {/* Live / dead status */}
-                <div className={'status-bar ' + (live ? 'live' : 'dead')}>
-                  <span className={'lamp big ' + (live ? 'on' : 'off')} />
-                  <span className="status-text">{live ? 'LIVE — ENERGIZED' : 'DEAD — DE-ENERGIZED'}</span>
-                  {statusAt(panel.panel) && <span className="status-since">set {new Date(statusAt(panel.panel)).toLocaleString()}</span>}
+                {/* Per-circuit live/dead summary — each circuit is toggled in the schedule below */}
+                <div className={'status-summary ' + (liveCount > 0 ? 'has-live' : 'none-live')}>
+                  <span className={'lamp big ' + (liveCount > 0 ? 'on' : 'off')} />
+                  <span className="status-text">{liveCount} of {panel.circuits.length} circuits marked live</span>
                   {admin && (
-                    <button className="btn btn-secondary" style={{ marginLeft: 'auto' }} disabled={busy} onClick={() => setStatus(!live)}>
-                      {live ? 'Mark DEAD' : 'Mark LIVE'}
-                    </button>
+                    <span className="bulk">
+                      <button className="btn btn-secondary" disabled={busy} onClick={() => setAllStatus(true)}>All live</button>
+                      <button className="btn btn-secondary" disabled={busy} onClick={() => setAllStatus(false)}>All dead</button>
+                    </span>
                   )}
                 </div>
 
@@ -374,13 +389,14 @@ export default function App() {
                   {[oddRows, evenRows].map((rows, ci) => (
                     <div key={ci}>
                       {admin ? (
-                        <div className="ehd"><span>Ckt</span><span>Description</span><span>A</span><span>P</span><span /></div>
+                        <div className="ehd"><span /><span>Ckt</span><span>Description</span><span>A</span><span>P</span><span /></div>
                       ) : (
-                        <div className="chd"><span>Ckt</span><span>Description</span><span style={{ textAlign: 'right' }}>Breaker</span></div>
+                        <div className="chd"><span /><span>Ckt</span><span>Description</span><span style={{ textAlign: 'right' }}>Breaker</span></div>
                       )}
                       {rows.map((c) => {
                         const spare = isSpare(c);
                         const on = selCircuit === String(c.n);
+                        const clive = circuitLive(panel.panel, c.n);
                         if (admin) {
                           const e = edits[c.n];
                           const dv = e ? e.desc : (c.desc || '');
@@ -389,6 +405,7 @@ export default function App() {
                           const dirty = e && (String(dv) !== String(c.desc || '') || String(av) !== String(c.amps ?? '') || String(pv) !== String(c.poles ?? ''));
                           return (
                             <div className="erow" key={c.n}>
+                              <button className="lamp-tog" disabled={statusBusyN === c.n} title={clive ? 'Live — click to mark dead' : 'Dead — click to mark live'} onClick={() => setCircuitStatus(c, !clive)}><span className={'lamp ' + (clive ? 'on' : 'off')} /></button>
                               <button className="erow-ckt" data-on={on ? '1' : '0'} onClick={() => toggleCircuit(c)} title="Highlight J-boxes on this circuit">{c.n}</button>
                               <input className="einput" value={dv} placeholder="description" onChange={(ev) => setField(c, 'desc', ev.target.value)} />
                               <input className="einput num" value={av} inputMode="numeric" placeholder="A" onChange={(ev) => setField(c, 'amps', ev.target.value)} />
@@ -400,6 +417,7 @@ export default function App() {
                         return (
                           <button key={c.n} className="crow" onClick={() => toggleCircuit(c)}
                             style={on ? { background: 'var(--color-surface)', boxShadow: 'inset 0 0 0 1px var(--color-accent)' } : undefined}>
+                            <span className={'lamp ' + (clive ? 'on' : 'off')} title={clive ? 'Live' : 'Dead'} />
                             <span className="mono" style={{ fontSize: 13, color: spare ? 'var(--color-faint)' : 'var(--color-accent)' }}>{c.n}</span>
                             <span style={{ fontSize: 13.5, color: spare ? 'var(--color-muted)' : 'var(--color-text)' }}>{c.desc}</span>
                             <span className="mono" style={{ fontSize: 12, textAlign: 'right', color: 'var(--color-text-2)' }}>{breaker(c)}</span>
