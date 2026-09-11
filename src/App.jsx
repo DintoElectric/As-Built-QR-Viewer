@@ -50,6 +50,17 @@ function buildScheduleRows(circuits) {
   return { rows, maxN };
 }
 
+// Expand each breaker into per-pole display rows: a 3-pole breaker at ckt 1
+// shows as circuits 1, 3, 5 — all sharing the breaker's status + description.
+function expandSide(circuits) {
+  const out = [];
+  circuits.forEach((c) => {
+    const p = c.poles || 1;
+    for (let k = 0; k < p; k++) out.push({ dn: c.n + 2 * k, c, primary: k === 0 });
+  });
+  return out.sort((a, b) => a.dn - b.dn);
+}
+
 function ScheduleCells({ cell }) {
   if (!cell || cell.kind === 'empty') return (<><td></td><td></td><td className="d"></td></>);
   if (cell.kind === 'covered') return null;
@@ -165,10 +176,10 @@ export default function App() {
     setPick({ tag: r.panel + ' · ckt ' + r.n, desc: r.desc, bk: r.bk });
     setSelCircuit(r.n != null ? String(r.n) : null);
   };
-  const toggleCircuit = (c) => {
-    const cn = String(c.n);
+  const toggleCircuitN = (dn, c) => {
+    const cn = String(dn);
     if (selCircuit === cn) { setSelCircuit(null); setPick(null); }
-    else { setSelCircuit(cn); setPick({ tag: panel.panel + ' · ckt ' + c.n, desc: c.desc, bk: breaker(c) }); }
+    else { setSelCircuit(cn); setPick({ tag: panel.panel + ' · ckt ' + dn, desc: c.desc, bk: breaker(c) }); }
   };
 
   // ---- admin ----
@@ -241,8 +252,8 @@ export default function App() {
     ? distinctLabels(placements.filter((b) => (b.circuits || []).includes(selCircuit))).sort(naturalSort)
     : [];
 
-  const oddRows = panel ? panel.circuits.filter((c) => c.n % 2 === 1) : [];
-  const evenRows = panel ? panel.circuits.filter((c) => c.n % 2 === 0) : [];
+  const oddRows = panel ? expandSide(panel.circuits.filter((c) => c.n % 2 === 1)) : [];
+  const evenRows = panel ? expandSide(panel.circuits.filter((c) => c.n % 2 === 0)) : [];
   const spareCount = panel ? panel.circuits.filter(isSpare).length : 0;
   const schedule = panel ? buildScheduleRows(panel.circuits) : { rows: [], maxN: 0 };
 
@@ -384,7 +395,7 @@ export default function App() {
                   </div>
                 )}
 
-                {admin && <div className="edit-hint">Admin — edit description / amps / poles below; Save stamps DATE TYPED.</div>}
+                {admin && <div className="edit-hint">Admin — click a lamp to flip that circuit live/dead; edit description / amps / poles and Save. Multi-pole breakers share one lamp across their circuits.</div>}
                 <div className="ckt-cols">
                   {[oddRows, evenRows].map((rows, ci) => (
                     <div key={ci}>
@@ -393,20 +404,33 @@ export default function App() {
                       ) : (
                         <div className="chd"><span /><span>Ckt</span><span>Description</span><span style={{ textAlign: 'right' }}>Breaker</span></div>
                       )}
-                      {rows.map((c) => {
+                      {rows.map((d) => {
+                        const c = d.c; const dn = d.dn;
                         const spare = isSpare(c);
-                        const on = selCircuit === String(c.n);
+                        const on = selCircuit === String(dn);
                         const clive = circuitLive(panel.panel, c.n);
+                        const lampBtn = (
+                          <button className="lamp-tog" disabled={statusBusyN === c.n} title={clive ? 'Live — click to mark dead' : 'Dead — click to mark live'} onClick={() => setCircuitStatus(c, !clive)}><span className={'lamp ' + (clive ? 'on' : 'off')} /></button>
+                        );
                         if (admin) {
+                          if (!d.primary) {
+                            return (
+                              <div className="erow covered" key={dn}>
+                                {lampBtn}
+                                <button className="erow-ckt" data-on={on ? '1' : '0'} onClick={() => toggleCircuitN(dn, c)}>{dn}</button>
+                                <span className="cont" style={{ gridColumn: 'span 4' }}>↳ {c.desc}</span>
+                              </div>
+                            );
+                          }
                           const e = edits[c.n];
                           const dv = e ? e.desc : (c.desc || '');
                           const av = e ? e.amps : (c.amps ?? '');
                           const pv = e ? e.poles : (c.poles ?? '');
                           const dirty = e && (String(dv) !== String(c.desc || '') || String(av) !== String(c.amps ?? '') || String(pv) !== String(c.poles ?? ''));
                           return (
-                            <div className="erow" key={c.n}>
-                              <button className="lamp-tog" disabled={statusBusyN === c.n} title={clive ? 'Live — click to mark dead' : 'Dead — click to mark live'} onClick={() => setCircuitStatus(c, !clive)}><span className={'lamp ' + (clive ? 'on' : 'off')} /></button>
-                              <button className="erow-ckt" data-on={on ? '1' : '0'} onClick={() => toggleCircuit(c)} title="Highlight J-boxes on this circuit">{c.n}</button>
+                            <div className="erow" key={dn}>
+                              {lampBtn}
+                              <button className="erow-ckt" data-on={on ? '1' : '0'} onClick={() => toggleCircuitN(dn, c)} title="Highlight J-boxes on this circuit">{dn}</button>
                               <input className="einput" value={dv} placeholder="description" onChange={(ev) => setField(c, 'desc', ev.target.value)} />
                               <input className="einput num" value={av} inputMode="numeric" placeholder="A" onChange={(ev) => setField(c, 'amps', ev.target.value)} />
                               <input className="einput num" value={pv} inputMode="numeric" placeholder="P" onChange={(ev) => setField(c, 'poles', ev.target.value)} />
@@ -414,11 +438,21 @@ export default function App() {
                             </div>
                           );
                         }
+                        if (!d.primary) {
+                          return (
+                            <button key={dn} className="crow covered" onClick={() => toggleCircuitN(dn, c)}
+                              style={on ? { background: 'var(--color-surface)', boxShadow: 'inset 0 0 0 1px var(--color-accent)' } : undefined}>
+                              <span className={'lamp ' + (clive ? 'on' : 'off')} title={clive ? 'Live' : 'Dead'} />
+                              <span className="mono" style={{ fontSize: 13, color: 'var(--color-muted)' }}>{dn}</span>
+                              <span className="cont" style={{ gridColumn: 'span 2', fontSize: 13 }}>↳ {c.desc}</span>
+                            </button>
+                          );
+                        }
                         return (
-                          <button key={c.n} className="crow" onClick={() => toggleCircuit(c)}
+                          <button key={dn} className="crow" onClick={() => toggleCircuitN(dn, c)}
                             style={on ? { background: 'var(--color-surface)', boxShadow: 'inset 0 0 0 1px var(--color-accent)' } : undefined}>
                             <span className={'lamp ' + (clive ? 'on' : 'off')} title={clive ? 'Live' : 'Dead'} />
-                            <span className="mono" style={{ fontSize: 13, color: spare ? 'var(--color-faint)' : 'var(--color-accent)' }}>{c.n}</span>
+                            <span className="mono" style={{ fontSize: 13, color: spare ? 'var(--color-faint)' : 'var(--color-accent)' }}>{dn}</span>
                             <span style={{ fontSize: 13.5, color: spare ? 'var(--color-muted)' : 'var(--color-text)' }}>{c.desc}</span>
                             <span className="mono" style={{ fontSize: 12, textAlign: 'right', color: 'var(--color-text-2)' }}>{breaker(c)}</span>
                           </button>
@@ -461,6 +495,10 @@ export default function App() {
           <div id="print-qr" className="ps-qr" />
         </div>
         <table className="ps-table">
+          <colgroup>
+            <col style={{ width: '4%' }} /><col style={{ width: '6%' }} /><col style={{ width: '6%' }} /><col style={{ width: '34%' }} />
+            <col style={{ width: '4%' }} /><col style={{ width: '6%' }} /><col style={{ width: '6%' }} /><col style={{ width: '34%' }} />
+          </colgroup>
           <thead>
             <tr>
               <th>CKT#</th><th>Poles</th><th>Amps</th><th>Description</th>
