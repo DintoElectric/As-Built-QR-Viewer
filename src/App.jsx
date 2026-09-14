@@ -219,20 +219,6 @@ export default function App() {
     } catch { /* ignore */ }
     setStatusBusyN(null);
   };
-  const setAllStatus = async (live) => {
-    if (!admin || !panel) return;
-    setBusy(true);
-    try {
-      const r = await fetch(FN_OVR, {
-        method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + token },
-        body: JSON.stringify({ action: 'setAllStatus', panel: panel.panel, live, ns: panel.circuits.map((c) => c.n) }),
-      });
-      if (r.status === 401) { logout(); setLoginErr('Session expired — log in again.'); }
-      const d = await r.json().catch(() => null);
-      if (d && d.data) setOverrides({ status: d.data.status || {}, circuits: d.data.circuits || {}, edited: d.data.edited || {}, panelStatus: d.data.panelStatus || {} });
-    } catch { /* ignore */ }
-    setBusy(false);
-  };
   const setPanelStatus = async (live) => {
     if (!admin || !panel) return;
     setBusy(true);
@@ -411,12 +397,6 @@ export default function App() {
                 <div className={'status-summary ' + (liveCount > 0 ? 'has-live' : 'none-live')}>
                   <span className={'lamp big ' + (liveCount > 0 ? 'on' : 'off')} />
                   <span className="status-text">{liveCount} of {panel.circuits.length} circuits marked live</span>
-                  {admin && (
-                    <span className="bulk">
-                      <button className="btn btn-secondary" disabled={busy} onClick={() => setAllStatus(true)}>All live</button>
-                      <button className="btn btn-secondary" disabled={busy} onClick={() => setAllStatus(false)}>All dead</button>
-                    </span>
-                  )}
                 </div>
 
                 <div style={{ marginTop: 12 }}><button className="btn btn-secondary" onClick={printSchedule}>Export / print schedule (PDF)</button></div>
