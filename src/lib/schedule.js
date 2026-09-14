@@ -20,7 +20,14 @@ export function sheetFloor(id) {
 // filter by floor here.
 export function linkedSheets(sheets, panel) {
   if (!panel) return [];
-  return sheets.filter((s) => s.jboxes.some((b) => b.panel === panel));
+  const hasBoxes = (s) => s.jboxes.some((b) => b.panel === panel);
+  const hasCallout = (s) => (s.panels || []).some((p) => p.panel === panel);
+  // A panel links to any sheet where it's tagged on a J-box OR drawn as a
+  // callout, so a panel with no J-boxes still opens the sheet it's marked on.
+  const linked = sheets.filter((s) => hasBoxes(s) || hasCallout(s));
+  // Sheets that actually carry this panel's J-boxes come first, so the default
+  // view shows highlighted boxes when they exist; callout-only sheets follow.
+  return linked.sort((a, b) => (hasBoxes(a) ? 0 : 1) - (hasBoxes(b) ? 0 : 1));
 }
 
 // J-boxes on a sheet fed from a panel, as raw placements (may repeat a label
