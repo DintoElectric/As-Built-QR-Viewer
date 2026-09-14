@@ -169,10 +169,12 @@ export default function DrawingViewer({ sheet, panel, selCircuit, linked, sheetI
   const note = sheet
     ? (selCircuit
         ? `Circuit ${selCircuit} of ${panel}: ${circuitCount} of ${labelCount} J-box${labelCount === 1 ? '' : 'es'} on this sheet carr${circuitCount === 1 ? 'ies' : 'y'} it, highlighted.`
-        : `${labelCount} J-box tag${labelCount === 1 ? '' : 's'} name ${panel}, boxed on the sheet` +
-          (offFloor ? ` (${sheetFloor(sheet.id).toLowerCase()} sheet ↗)` : '') +
-          '. Parentheses are box tags, not circuits.' +
-          (panelHere ? ` Panel ${panel} is drawn on this sheet — its callout is boxed.` : ''))
+        : (labelCount === 0 && panelHere
+            ? `${panel} is drawn on this sheet — its callout is boxed. No J-boxes on this sheet are tagged to it.`
+            : `${labelCount} J-box tag${labelCount === 1 ? '' : 's'} name ${panel}, boxed on the sheet` +
+              (offFloor ? ` (${sheetFloor(sheet.id).toLowerCase()} sheet ↗)` : '') +
+              '. Parentheses are box tags, not circuits.' +
+              (panelHere ? ` Panel ${panel} is drawn on this sheet — its callout is boxed.` : '')))
     : '';
 
   return (
@@ -191,7 +193,7 @@ export default function DrawingViewer({ sheet, panel, selCircuit, linked, sheetI
                 onClick={() => onPickSheet(s.id)}
                 title={s.title}
               >
-                {s.id}{off ? ' ↗' : ''} <span style={{ color: 'var(--color-muted)' }}>· {n} JB</span>
+                {s.id}{off ? ' ↗' : ''} <span style={{ color: 'var(--color-muted)' }}>· {n > 0 ? n + ' JB' : 'callout'}</span>
               </button>
             );
           })}
@@ -237,8 +239,8 @@ export default function DrawingViewer({ sheet, panel, selCircuit, linked, sheetI
       ) : (
         <div className="gridpaper empty-well">
           <div className="empty-msg">
-            No drawing linked to this panel.<br />
-            No J-box on the loaded sheets (E35-02/03/04/05 A–C) is tagged to it.
+            No drawing for this panel.<br />
+            {panel} isn't tagged on a J-box or drawn as a callout on any loaded sheet.
           </div>
         </div>
       )}
