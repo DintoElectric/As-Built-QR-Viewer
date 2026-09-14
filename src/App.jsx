@@ -53,10 +53,19 @@ function buildScheduleRows(circuits) {
 // Expand each breaker into per-pole display rows: a 3-pole breaker at ckt 1
 // shows as circuits 1, 3, 5 — all sharing the breaker's status + description.
 function expandSide(circuits) {
-  const out = [];
-  circuits.forEach((c) => {
-    const p = c.poles || 1;
-    for (let k = 0; k < p; k++) out.push({ dn: c.n + 2 * k, c, primary: k === 0 });
+  const byN = {}; circuits.forEach((c) => { byN[c.n] = c; });
+  const out = []; const covered = new Set();
+  // Walk in circuit order; a multi-pole breaker absorbs the next same-side
+  // slots (join). An absorbed slot never renders its own row (no duplicates);
+  // dropping a breaker's poles frees those slots back to blank/unused (split).
+  circuits.map((c) => c.n).sort((a, b) => a - b).forEach((n) => {
+    if (covered.has(n)) return;
+    const c = byN[n]; const p = c.poles || 1;
+    for (let k = 0; k < p; k++) {
+      const dn = n + 2 * k;
+      out.push({ dn, c, primary: k === 0 });
+      if (k > 0) covered.add(dn);
+    }
   });
   return out.sort((a, b) => a.dn - b.dn);
 }
@@ -295,10 +304,15 @@ export default function App() {
   const plive = panel ? panelLive(panel.panel) : false;
   // live/dead per circuit number (a multi-pole breaker's poles all share its state)
   const liveMap = {};
-  if (panel) panel.circuits.forEach((c) => {
-    const pn = c.poles || 1; const lv = circuitLive(panel.panel, c.n);
-    for (let k = 0; k < pn; k++) liveMap[c.n + 2 * k] = lv;
-  });
+  if (panel) {
+    const byN = {}; panel.circuits.forEach((c) => { byN[c.n] = c; });
+    const covered = new Set();
+    panel.circuits.map((c) => c.n).sort((a, b) => a - b).forEach((n) => {
+      if (covered.has(n)) return;
+      const c = byN[n]; const pn = c.poles || 1; const lv = circuitLive(panel.panel, n);
+      for (let k = 0; k < pn; k++) { liveMap[n + 2 * k] = lv; if (k > 0) covered.add(n + 2 * k); }
+    });
+  }
   const cktColor = (n) => (n in liveMap ? (liveMap[n] ? '#137a2e' : '#b3202f') : undefined);
 
   return (
@@ -430,7 +444,7 @@ export default function App() {
                   </div>
                 )}
 
-                {admin && <div className="edit-hint">Admin — click a lamp to flip that circuit live/dead; edit description / amps / poles and Save. Multi-pole breakers share one lamp across their circuits.</div>}
+                {admin && <div className="edit-hint">Admin — click a lamp to flip that circuit live/dead; edit description / amps / poles and Save. Set a circuit's <b>poles</b> to 2 or 3 to join it with the next same-side circuits; set it back to 1 to split them to unused. Multi-pole breakers share one lamp.</div>}
                 <div className="ckt-cols">
                   {[oddRows, evenRows].map((rows, ci) => (
                     <div key={ci}>
