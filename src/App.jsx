@@ -293,6 +293,13 @@ export default function App() {
   const gridCols = full ? 'minmax(0,1fr)' : (admin ? '196px 380px minmax(0,1fr)' : '196px 300px minmax(0,1fr)');
   const liveCount = panel ? panel.circuits.filter((c) => circuitLive(panel.panel, c.n)).length : 0;
   const plive = panel ? panelLive(panel.panel) : false;
+  // live/dead per circuit number (a multi-pole breaker's poles all share its state)
+  const liveMap = {};
+  if (panel) panel.circuits.forEach((c) => {
+    const pn = c.poles || 1; const lv = circuitLive(panel.panel, c.n);
+    for (let k = 0; k < pn; k++) liveMap[c.n + 2 * k] = lv;
+  });
+  const cktColor = (n) => (n in liveMap ? (liveMap[n] ? '#137a2e' : '#b3202f') : undefined);
 
   return (
     <>
@@ -342,7 +349,7 @@ export default function App() {
                   <div className="floor-head">{g}</div>
                   {items.map((p) => (
                     <button key={p.panel} className="pbtn" data-on={p.panel === sel ? '1' : '0'} onClick={() => selectPanel(p.panel)}>
-                      <span className={'lamp ' + (panelAnyLive(p.panel) ? 'on' : 'off')} title={panelAnyLive(p.panel) ? 'Live (panel or a circuit)' : 'No power marked'} />
+                      <span className={'lamp ' + (panelAnyLive(p.panel) ? 'on' : 'off')} title={panelAnyLive(p.panel) ? 'Has live circuits' : 'No live circuits'} />
                       <span className="mono" style={{ fontSize: 13 }}>{p.panel}</span>
                       <span className="mono" style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--color-muted)' }}>{p.circuits.length}</span>
                     </button>
@@ -513,6 +520,7 @@ export default function App() {
         <div className="ps-head">
           <img className="ps-logo" src="/dinto-logo.png" alt="Dinto Electrical Contractors" />
           <div className="ps-title">PANEL: {panel.panel}</div>
+          <div className="ps-power" style={{ color: plive ? '#137a2e' : '#b3202f' }}>PANEL POWER: {plive ? 'LIVE' : 'DEAD'}</div>
           <div className="ps-meta">
             <div>PANEL LOCATION: {panel.meta ? panel.meta.location : ''}</div>
             <div>DATE TYPED: {panel.meta ? panel.meta.date : ''}</div>
@@ -522,6 +530,7 @@ export default function App() {
           </div>
           <div id="print-qr" className="ps-qr" />
         </div>
+        <div className="ps-legend">Circuit no. color — <b style={{ color: '#137a2e' }}>green = live</b>, <b style={{ color: '#b3202f' }}>red = dead</b>. Status as of print; scan the QR for current status.</div>
         <table className="ps-table">
           <colgroup>
             <col style={{ width: '4%' }} /><col style={{ width: '6%' }} /><col style={{ width: '6%' }} /><col style={{ width: '34%' }} />
@@ -536,9 +545,9 @@ export default function App() {
           <tbody>
             {schedule.rows.map((row, i) => (
               <tr key={i}>
-                <td className="ckt">{row.lc <= schedule.maxN ? row.lc : ''}</td>
+                <td className="ckt" style={{ color: cktColor(row.lc) }}>{row.lc <= schedule.maxN ? row.lc : ''}</td>
                 <ScheduleCells cell={row.l} />
-                <td className="ckt">{row.rc <= schedule.maxN ? row.rc : ''}</td>
+                <td className="ckt" style={{ color: cktColor(row.rc) }}>{row.rc <= schedule.maxN ? row.rc : ''}</td>
                 <ScheduleCells cell={row.r} />
               </tr>
             ))}
