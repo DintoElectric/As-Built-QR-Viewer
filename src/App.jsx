@@ -75,7 +75,7 @@ export default function App() {
   const [loaded, setLoaded] = useState(false);
 
   // Admin-editable overlay (statuses + circuit edits) shared via Netlify Blobs.
-  const [overrides, setOverrides] = useState({ status: {}, circuits: {}, edited: {} });
+  const [overrides, setOverrides] = useState({ status: {}, circuits: {}, edited: {}, panelStatus: {} });
   const [token, setToken] = useState(() => sessionStorage.getItem('adminToken') || '');
   const admin = !!token;
   const [loginOpen, setLoginOpen] = useState(false);
@@ -111,7 +111,7 @@ export default function App() {
   // so the live/dead light stays current without a full reload.
   const refreshOverrides = () => {
     fetch(FN_OVR).then((r) => (r.ok ? r.json() : null)).then((d) => {
-      if (d) setOverrides({ status: d.status || {}, circuits: d.circuits || {}, edited: d.edited || {} });
+      if (d) setOverrides({ status: d.status || {}, circuits: d.circuits || {}, edited: d.edited || {}, panelStatus: d.panelStatus || {} });
     }).catch(() => { /* backend not up yet — app still works read-only */ });
   };
   useEffect(() => {
@@ -141,7 +141,9 @@ export default function App() {
   }), [rawPanels, overrides]);
 
   const circuitLive = (name, n) => { const s = overrides.status[name]; return !!(s && s[String(n)] && s[String(n)].live); };
-  const panelAnyLive = (name) => { const s = overrides.status[name]; return !!(s && Object.values(s).some((v) => v && v.live)); };
+  const anyCircuitLive = (name) => { const s = overrides.status[name]; return !!(s && Object.values(s).some((v) => v && v.live)); };
+  const panelLive = (name) => { const s = overrides.panelStatus[name]; return !!(s && s.live); };
+  const panelAnyLive = (name) => panelLive(name) || anyCircuitLive(name);
 
   const totalCircuits = useMemo(() => panels.reduce((s, p) => s + p.circuits.length, 0), [panels]);
   const inFloor = (p) => floor === 'All' || floorOf(p.panel) === floor;
@@ -204,7 +206,7 @@ export default function App() {
       });
       if (r.status === 401) { logout(); setLoginErr('Session expired — log in again.'); }
       const d = await r.json().catch(() => null);
-      if (d && d.data) setOverrides({ status: d.data.status || {}, circuits: d.data.circuits || {}, edited: d.data.edited || {} });
+      if (d && d.data) setOverrides({ status: d.data.status || {}, circuits: d.data.circuits || {}, edited: d.data.edited || {}, panelStatus: d.data.panelStatus || {} });
     } catch { /* ignore */ }
     setStatusBusyN(null);
   };
@@ -218,7 +220,21 @@ export default function App() {
       });
       if (r.status === 401) { logout(); setLoginErr('Session expired — log in again.'); }
       const d = await r.json().catch(() => null);
-      if (d && d.data) setOverrides({ status: d.data.status || {}, circuits: d.data.circuits || {}, edited: d.data.edited || {} });
+      if (d && d.data) setOverrides({ status: d.data.status || {}, circuits: d.data.circuits || {}, edited: d.data.edited || {}, panelStatus: d.data.panelStatus || {} });
+    } catch { /* ignore */ }
+    setBusy(false);
+  };
+  const setPanelStatus = async (live) => {
+    if (!admin || !panel) return;
+    setBusy(true);
+    try {
+      const r = await fetch(FN_OVR, {
+        method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + token },
+        body: JSON.stringify({ action: 'setPanelStatus', panel: panel.panel, live }),
+      });
+      if (r.status === 401) { logout(); setLoginErr('Session expired — log in again.'); }
+      const d = await r.json().catch(() => null);
+      if (d && d.data) setOverrides({ status: d.data.status || {}, circuits: d.data.circuits || {}, edited: d.data.edited || {}, panelStatus: d.data.panelStatus || {} });
     } catch { /* ignore */ }
     setBusy(false);
   };
@@ -239,7 +255,7 @@ export default function App() {
       if (r.status === 401) { logout(); setLoginErr('Session expired — log in again.'); }
       const d = await r.json().catch(() => null);
       if (d && d.data) {
-        setOverrides({ status: d.data.status || {}, circuits: d.data.circuits || {}, edited: d.data.edited || {} });
+        setOverrides({ status: d.data.status || {}, circuits: d.data.circuits || {}, edited: d.data.edited || {}, panelStatus: d.data.panelStatus || {} });
         setEdits((prev) => { const n = { ...prev }; delete n[c.n]; return n; });
       }
     } catch { /* ignore */ }
@@ -276,6 +292,7 @@ export default function App() {
 
   const gridCols = full ? 'minmax(0,1fr)' : (admin ? '196px 380px minmax(0,1fr)' : '196px 300px minmax(0,1fr)');
   const liveCount = panel ? panel.circuits.filter((c) => circuitLive(panel.panel, c.n)).length : 0;
+  const plive = panel ? panelLive(panel.panel) : false;
 
   return (
     <>
@@ -325,7 +342,7 @@ export default function App() {
                   <div className="floor-head">{g}</div>
                   {items.map((p) => (
                     <button key={p.panel} className="pbtn" data-on={p.panel === sel ? '1' : '0'} onClick={() => selectPanel(p.panel)}>
-                      <span className={'lamp ' + (panelAnyLive(p.panel) ? 'on' : 'off')} title={panelAnyLive(p.panel) ? 'Has live circuits' : 'No live circuits'} />
+                      <span className={'lamp ' + (panelAnyLive(p.panel) ? 'on' : 'off')} title={panelAnyLive(p.panel) ? 'Live (panel or a circuit)' : 'No power marked'} />
                       <span className="mono" style={{ fontSize: 13 }}>{p.panel}</span>
                       <span className="mono" style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--color-muted)' }}>{p.circuits.length}</span>
                     </button>
@@ -357,6 +374,17 @@ export default function App() {
                 <div className="scanned"><span className="scanned-dot" />Scanned · panel label</div>
                 <div className="mono designation">{panel.panel}</div>
                 <div className="source-line">{sourceLabel(panel)} · {panel.circuits.length} circuits scheduled · {spareCount} spare</div>
+
+                {/* Panel-level power — independent of the individual circuits */}
+                <div className={'status-summary ' + (plive ? 'has-live' : 'none-live')}>
+                  <span className={'lamp big ' + (plive ? 'on' : 'off')} />
+                  <span className="status-text">Panel power {plive ? '— ON (energized)' : '— off'}</span>
+                  {admin && (
+                    <span className="bulk">
+                      <button className="btn btn-secondary" disabled={busy} onClick={() => setPanelStatus(!plive)}>{plive ? 'Mark panel dead' : 'Mark panel live'}</button>
+                    </span>
+                  )}
+                </div>
 
                 {/* Per-circuit live/dead summary — each circuit is toggled in the schedule below */}
                 <div className={'status-summary ' + (liveCount > 0 ? 'has-live' : 'none-live')}>
