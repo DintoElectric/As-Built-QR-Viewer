@@ -2,15 +2,16 @@
 // static panels.json by the app. Everyone can GET it (statuses + edits are
 // public); only a valid admin token may POST changes.
 //
-//   GET  -> { status:{panel:{n:{live,at}}}, circuits:{panel:{n:{desc,amps,poles}}}, edited:{panel:"MM/DD/YYYY"} }
-//   POST { action:'setStatus',    panel, n, live }             (admin)
-//   POST { action:'setAllStatus', panel, live, ns:[...] }      (admin)
-//   POST { action:'editCircuit',  panel, n, desc, amps, poles }(admin)
+//   GET  -> { status:{panel:{n:{live,at}}}, panelStatus:{panel:{live,at}}, circuits:{...}, edited:{...} }
+//   POST { action:'setPanelStatus', panel, live }              (admin)
+//   POST { action:'setStatus',      panel, n, live }           (admin)
+//   POST { action:'setAllStatus',   panel, live, ns:[...] }    (admin)
+//   POST { action:'editCircuit',    panel, n, desc, amps, poles } (admin)
 import { getStore } from '@netlify/blobs';
 import crypto from 'node:crypto';
 
 const KEY = 'data';
-const EMPTY = { status: {}, circuits: {}, edited: {} };
+const EMPTY = { status: {}, circuits: {}, edited: {}, panelStatus: {} };
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
@@ -48,7 +49,7 @@ export default async (req) => {
     let body = {};
     try { body = await req.json(); } catch { return json({ ok: false, error: 'bad body' }, 400); }
     const data = (await store.get(KEY, { type: 'json' })) || structuredClone(EMPTY);
-    data.status = data.status || {}; data.circuits = data.circuits || {}; data.edited = data.edited || {};
+    data.status = data.status || {}; data.circuits = data.circuits || {}; data.edited = data.edited || {}; data.panelStatus = data.panelStatus || {};
 
     const panel = String(body.panel || '');
     if (!panel) return json({ ok: false, error: 'no panel' }, 400);
@@ -57,7 +58,9 @@ export default async (req) => {
     // Migrate any old per-panel entry ({live,at}) to the new shape.
     if (data.status[panel] && typeof data.status[panel].live === 'boolean') data.status[panel] = {};
 
-    if (body.action === 'setStatus') {
+    if (body.action === 'setPanelStatus') {
+      data.panelStatus[panel] = { live: !!body.live, at: new Date().toISOString() };
+    } else if (body.action === 'setStatus') {
       data.status[panel] = data.status[panel] || {};
       data.status[panel][String(body.n)] = { live: !!body.live, at: new Date().toISOString() };
     } else if (body.action === 'setAllStatus') {
