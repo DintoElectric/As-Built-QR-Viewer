@@ -23,7 +23,7 @@ function getDoc(id) {
   return docCache.get(id);
 }
 
-export default function DrawingViewer({ sheet, panel, selCircuit, linked, sheetId, onPickSheet, full, onToggleFull }) {
+export default function DrawingViewer({ sheet, panel, selCircuit, linked, sheetId, onPickSheet, full, onToggleFull, location }) {
   const [zoom, setZoom] = useState(1);
   const [, forceTick] = useState(0);
   const [rendering, setRendering] = useState(false);
@@ -239,8 +239,11 @@ export default function DrawingViewer({ sheet, panel, selCircuit, linked, sheetI
       ) : (
         <div className="gridpaper empty-well">
           <div className="empty-msg">
-            No drawing for this panel.<br />
-            {panel} isn't tagged on a J-box or drawn as a callout on any loaded sheet.
+            {location ? (
+              <><span style={{ color: 'var(--color-accent)', fontWeight: 600 }}>Located</span><br />{location}<br /><span style={{ fontSize: 11, color: 'var(--color-faint)' }}>Not drawn on a loaded branch sheet.</span></>
+            ) : (
+              <>No drawing for this panel.<br />{panel} isn't tagged on a J-box or drawn as a callout on any loaded sheet.</>
+            )}
           </div>
         </div>
       )}
