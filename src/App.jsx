@@ -82,6 +82,7 @@ export default function App() {
   const [rawPanels, setRawPanels] = useState([]);
   const [sheets, setSheets] = useState([]);
   const [loaded, setLoaded] = useState(false);
+  const [locations, setLocations] = useState({});
 
   // Admin-editable overlay (statuses + circuit edits) shared via Netlify Blobs.
   const [overrides, setOverrides] = useState({ status: {}, circuits: {}, edited: {}, panelStatus: {} });
@@ -109,9 +110,10 @@ export default function App() {
     Promise.all([
       fetch('/data/panels.json').then((r) => r.json()),
       fetch('/data/drawings.json').then((r) => r.json()),
-    ]).then(([pd, dd]) => {
+      fetch('/data/panel_locations.json').then((r) => (r.ok ? r.json() : {})).catch(() => ({})),
+    ]).then(([pd, dd, loc]) => {
       if (!alive) return;
-      setRawPanels(pd.panels); setSheets(dd.sheets); setLoaded(true);
+      setRawPanels(pd.panels); setSheets(dd.sheets); setLocations(loc || {}); setLoaded(true);
     }).catch(() => { if (alive) setLoaded(true); });
     return () => { alive = false; };
   }, []);
@@ -219,6 +221,20 @@ export default function App() {
     } catch { /* ignore */ }
     setStatusBusyN(null);
   };
+  const setAllStatus = async (live) => {
+    if (!admin || !panel) return;
+    setBusy(true);
+    try {
+      const r = await fetch(FN_OVR, {
+        method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + token },
+        body: JSON.stringify({ action: 'setAllStatus', panel: panel.panel, live, ns: panel.circuits.map((c) => c.n) }),
+      });
+      if (r.status === 401) { logout(); setLoginErr('Session expired — log in again.'); }
+      const d = await r.json().catch(() => null);
+      if (d && d.data) setOverrides({ status: d.data.status || {}, circuits: d.data.circuits || {}, edited: d.data.edited || {}, panelStatus: d.data.panelStatus || {} });
+    } catch { /* ignore */ }
+    setBusy(false);
+  };
   const setPanelStatus = async (live) => {
     if (!admin || !panel) return;
     setBusy(true);
@@ -288,6 +304,7 @@ export default function App() {
   const gridCols = full ? 'minmax(0,1fr)' : (admin ? '196px 380px minmax(0,1fr)' : '196px 300px minmax(0,1fr)');
   const liveCount = panel ? panel.circuits.filter((c) => circuitLive(panel.panel, c.n)).length : 0;
   const plive = panel ? panelLive(panel.panel) : false;
+  const location = sel ? locations[sel] : null;
   // live/dead per circuit number (a multi-pole breaker's poles all share its state)
   const liveMap = {};
   if (panel) {
@@ -381,6 +398,7 @@ export default function App() {
                 <div className="scanned"><span className="scanned-dot" />Scanned · panel label</div>
                 <div className="mono designation">{panel.panel}</div>
                 <div className="source-line">{sourceLabel(panel)} · {panel.circuits.length} circuits scheduled · {spareCount} spare</div>
+                {location && <div style={{ fontSize: 12.5, color: 'var(--color-text-2)', marginTop: 8 }}><span style={{ color: 'var(--color-accent)', fontWeight: 600 }}>Location</span> · {location}</div>}
 
                 {/* Panel-level power — independent of the individual circuits */}
                 <div className={'status-summary ' + (plive ? 'has-live' : 'none-live')}>
@@ -499,7 +517,7 @@ export default function App() {
 
         <DrawingViewer
           sheet={sheet} panel={sel} selCircuit={selCircuit} linked={linked}
-          sheetId={sheet ? sheet.id : null} onPickSheet={setSheetId}
+          sheetId={sheet ? sheet.id : null} onPickSheet={setSheetId} location={location}
           full={full} onToggleFull={() => setFull((v) => !v)}
         />
       </div>
