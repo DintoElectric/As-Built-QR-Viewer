@@ -103,6 +103,7 @@ export default function App() {
   const [floor, setFloor] = useState('All');
   const [sheetId, setSheetId] = useState(null);
   const [full, setFull] = useState(false);
+  const [collapsed, setCollapsed] = useState(!!slug); // panel list collapsed (auto on QR entry)
 
   // Static base data.
   useEffect(() => {
@@ -183,7 +184,7 @@ export default function App() {
     return out;
   }, [q, searching, panels, floor]);
 
-  const selectPanel = (name) => { setSel(name); setQ(''); setPick(null); setSelCircuit(null); setSheetId(null); setEdits({}); };
+  const selectPanel = (name) => { setSel(name); setQ(''); setPick(null); setSelCircuit(null); setSheetId(null); setEdits({}); if (window.matchMedia && window.matchMedia('(max-width: 900px)').matches) setCollapsed(true); };
   const openResult = (r) => {
     setSel(r.panel); setQ(''); setSheetId(null);
     setPick({ tag: r.panel + ' · ckt ' + r.n, desc: r.desc, bk: r.bk });
@@ -301,7 +302,11 @@ export default function App() {
     setTimeout(() => window.print(), 250);
   };
 
-  const gridCols = full ? 'minmax(0,1fr)' : (admin ? '196px 380px minmax(0,1fr)' : '196px 300px minmax(0,1fr)');
+  const gridCols = full
+    ? 'minmax(0,1fr)'
+    : collapsed
+      ? (admin ? '380px minmax(0,1fr)' : '300px minmax(0,1fr)')
+      : (admin ? '196px 380px minmax(0,1fr)' : '196px 300px minmax(0,1fr)');
   const liveCount = panel ? panel.circuits.filter((c) => circuitLive(panel.panel, c.n)).length : 0;
   const plive = panel ? panelLive(panel.panel) : false;
   const location = sel ? locations[sel] : null;
@@ -322,6 +327,10 @@ export default function App() {
     <>
     <div className="app">
       <header className="topbar">
+        {!full && (
+          <button className="fbtn collapse-btn" data-on={collapsed ? '0' : '1'} onClick={() => setCollapsed((v) => !v)}
+            title={collapsed ? 'Show panel list' : 'Hide panel list'} aria-label="Toggle panel list">☰ Panels</button>
+        )}
         <span className="wordmark">Dinto <span className="wordmark-2">As-Builts</span></span>
         <span className="tag tag-neutral">Public link · no sign-in</span>
         <input
@@ -348,7 +357,7 @@ export default function App() {
       </header>
 
       <div className="grid" style={{ gridTemplateColumns: gridCols }}>
-        {!full && (
+        {!full && !collapsed && (
           <aside className="col-panels scrolly">
             <div className="eyebrow" style={{ marginBottom: 10 }}>Panels · {panels.filter(inFloor).length}</div>
             <div className="floor-chips">
