@@ -449,7 +449,7 @@ button:focus:not(:focus-visible) { outline: none; }
 .status-summary .status-text { font-weight: 600; letter-spacing: 0.02em; color: var(--color-text-2); }
 .status-summary .bulk { margin-left: auto; display: flex; gap: 6px; }
 
-/* always-on disclaimer, fixed to the bottom of the viewport (flows in-page on mobile) */
+/* always-on disclaimer, fixed to the bottom of the viewport */
 .disclaimer {
   position: fixed; bottom: 0; left: 0; right: 0; min-height: var(--footer);
   display: flex; align-items: center;
@@ -485,3 +485,10 @@ button:focus:not(:focus-visible) { outline: none; }
 /* Live/dead on the exported schedule */
 .print-schedule .ps-power { position: absolute; top: 80px; left: 0; font-size: 12px; font-weight: 700; letter-spacing: 0.02em; }
 .print-schedule .ps-legend { font-size: 8px; color: #333; margin: 2px 0 4px; }
+
+/* Collapsible panel-list toggle */
+.collapse-btn { flex: none; }
+.collapse-btn[data-on="1"] { color: var(--color-accent); box-shadow: inset 0 0 0 1px var(--color-accent); }
+
+/* Mobile: free up top-bar room for the Panels toggle */
+@media (max-width: 900px) { .topbar .tag-neutral { display: none; } }
