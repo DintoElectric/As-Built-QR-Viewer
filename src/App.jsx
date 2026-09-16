@@ -148,7 +148,9 @@ export default function App() {
       const o = ce[String(c.n)];
       return o ? { ...c, desc: o.desc, amps: o.amps === '' ? '' : o.amps, poles: o.poles === '' ? '' : o.poles } : c;
     }) : p.circuits;
-    const meta = ed ? { ...(p.meta || {}), date: ed } : p.meta;
+    const edAt = ed ? (typeof ed === 'string' ? ed : ed.at) : null;     // legacy string or { by, at }
+    const edBy = ed && typeof ed === 'object' ? ed.by : null;
+    const meta = edAt ? { ...(p.meta || {}), date: edAt, editedBy: edBy } : p.meta;
     return { ...p, circuits, meta };
   }), [rawPanels, overrides]);
 
@@ -544,7 +546,7 @@ export default function App() {
           <div className="ps-power" style={{ color: plive ? '#137a2e' : '#b3202f' }}>PANEL POWER: {plive ? 'LIVE' : 'DEAD'}</div>
           <div className="ps-meta">
             <div>PANEL LOCATION: {panel.meta ? panel.meta.location : ''}</div>
-            <div>DATE TYPED: {panel.meta ? panel.meta.date : ''}</div>
+            <div>DATE TYPED: {panel.meta ? panel.meta.date : ''}{panel.meta && panel.meta.editedBy ? ` (${panel.meta.editedBy})` : ''}</div>
             <div className="sp">VOLTAGE:&nbsp; {panel.meta ? panel.meta.voltage : ''}</div>
             <div>PH/WIRE:&nbsp; {panel.meta ? panel.meta.phwire : ''}</div>
             <div>FED FROM: {panel.meta ? panel.meta.fedfrom : ''}</div>
