@@ -383,6 +383,8 @@ button:focus:not(:focus-visible) { outline: none; }
   .col-panels, .col-schedule, .viewer { position: static; max-height: none; height: auto; }
   .viewer { height: 80vh; }
   .search { margin-left: 8px; }
+  .disclaimer { position: static; min-height: 0; }
+  .col-panels, .col-schedule { max-height: none; }
 }
 
 /* ------------------------------------------------------------------
@@ -420,7 +422,7 @@ button:focus:not(:focus-visible) { outline: none; }
 /* ------------------------------------------------------------------
    Admin, live/dead status, and the always-on safety disclaimer.
    ------------------------------------------------------------------ */
-:root { --footer: 48px; }
+:root { --footer: 60px; }
 
 /* make room for the fixed disclaimer bar */
 .col-panels, .col-schedule { max-height: calc(100vh - var(--topbar) - var(--footer)); }
@@ -447,14 +449,14 @@ button:focus:not(:focus-visible) { outline: none; }
 .status-summary .status-text { font-weight: 600; letter-spacing: 0.02em; color: var(--color-text-2); }
 .status-summary .bulk { margin-left: auto; display: flex; gap: 6px; }
 
-/* always-on disclaimer, fixed to the bottom of the viewport */
+/* always-on disclaimer, fixed to the bottom of the viewport (flows in-page on mobile) */
 .disclaimer {
-  position: fixed; bottom: 0; left: 0; right: 0; height: var(--footer);
+  position: fixed; bottom: 0; left: 0; right: 0; min-height: var(--footer);
   display: flex; align-items: center;
   background: #2a0e10; color: #ffd7d9;
   border-top: 1px solid #5b2d30;
-  font-size: 10.5px; line-height: 1.3; letter-spacing: 0.01em;
-  padding: 5px 16px; z-index: 20; overflow: hidden;
+  font-size: 10.5px; line-height: 1.35; letter-spacing: 0.01em;
+  padding: 6px 16px; z-index: 20;
 }
 @media print { .disclaimer { display: none; } }
 
