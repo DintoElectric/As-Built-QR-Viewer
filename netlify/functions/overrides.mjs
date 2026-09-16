@@ -2,11 +2,12 @@
 // static panels.json by the app. Everyone can GET it (statuses + edits are
 // public); only a valid admin token may POST changes.
 //
-//   GET  -> { status:{panel:{n:{live,at}}}, panelStatus:{panel:{live,at}}, circuits:{...}, edited:{...} }
-//   POST { action:'setPanelStatus', panel, live }              (admin)
-//   POST { action:'setStatus',      panel, n, live }           (admin)
-//   POST { action:'setAllStatus',   panel, live, ns:[...] }    (admin)
-//   POST { action:'editCircuit',    panel, n, desc, amps, poles } (admin)
+//   GET  -> { status:{panel:{n:{live,at}}}, panelStatus:{panel:{live,at}},
+//            circuits:{panel:{n:{desc,amps,poles}}}, edited:{panel:{by,at}} }
+//   POST { action:'setStatus',   panel, n, live }                 (admin)
+//   POST { action:'setPanelStatus', panel, live }                 (admin)
+//   POST { action:'setAllStatus', panel, live, ns }               (admin)
+//   POST { action:'editCircuit',  panel, n, desc, amps, poles }   (admin) — stamps edited{by,at}
 import { getStore } from '@netlify/blobs';
 import crypto from 'node:crypto';
 
@@ -15,14 +16,19 @@ const EMPTY = { status: {}, circuits: {}, edited: {}, panelStatus: {} };
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
-function validToken(token) {
-  const ADMIN = process.env.ADMIN_CODE || '';
-  if (!ADMIN || !token) return false;
-  const [exp, sig] = String(token).split('.');
-  if (!exp || !sig || Date.now() > Number(exp)) return false;
-  const good = crypto.createHmac('sha256', ADMIN).update(exp).digest('hex');
+// Verify the HMAC token and return the admin's initials, or null if invalid.
+// Token shape: `${who}.${exp}.${sig}`  (sig = HMAC(secret, `${who}.${exp}`)).
+function tokenIdentity(token) {
+  const SECRET = process.env.ADMIN_CODES || process.env.ADMIN_CODE || '';
+  if (!SECRET || !token) return null;
+  const parts = String(token).split('.');
+  if (parts.length !== 3) return null;
+  const [who, exp, sig] = parts;
+  if (!exp || !sig || Date.now() > Number(exp)) return null;
+  const good = crypto.createHmac('sha256', SECRET).update(`${who}.${exp}`).digest('hex');
   const a = Buffer.from(sig); const b = Buffer.from(good);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  return who || 'ADMIN';
 }
 
 // MM/DD/YYYY to match the "DATE TYPED" field on the schedules.
@@ -32,9 +38,6 @@ function today() {
 }
 
 export default async (req) => {
-  // Writes read-modify-write the same blob, so use STRONG consistency for those
-  // (so each save is based on the latest data and can't clobber a prior change).
-  // Public GETs can stay eventual (faster).
   const store = getStore({ name: 'asbuilt-overrides', consistency: req.method === 'POST' ? 'strong' : 'eventual' });
 
   if (req.method === 'GET') {
@@ -44,7 +47,8 @@ export default async (req) => {
 
   if (req.method === 'POST') {
     const auth = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
-    if (!validToken(auth)) return json({ ok: false, error: 'unauthorized' }, 401);
+    const who = tokenIdentity(auth);
+    if (who === null) return json({ ok: false, error: 'unauthorized' }, 401);
 
     let body = {};
     try { body = await req.json(); } catch { return json({ ok: false, error: 'bad body' }, 400); }
@@ -54,19 +58,17 @@ export default async (req) => {
     const panel = String(body.panel || '');
     if (!panel) return json({ ok: false, error: 'no panel' }, 400);
 
-    // Status is per-circuit: data.status[panel][ckt#] = { live, at }.
-    // Migrate any old per-panel entry ({live,at}) to the new shape.
     if (data.status[panel] && typeof data.status[panel].live === 'boolean') data.status[panel] = {};
 
     if (body.action === 'setPanelStatus') {
-      data.panelStatus[panel] = { live: !!body.live, at: new Date().toISOString() };
+      data.panelStatus[panel] = { live: !!body.live, at: new Date().toISOString(), by: who };
     } else if (body.action === 'setStatus') {
       data.status[panel] = data.status[panel] || {};
-      data.status[panel][String(body.n)] = { live: !!body.live, at: new Date().toISOString() };
+      data.status[panel][String(body.n)] = { live: !!body.live, at: new Date().toISOString(), by: who };
     } else if (body.action === 'setAllStatus') {
       data.status[panel] = data.status[panel] || {};
       const at = new Date().toISOString();
-      (Array.isArray(body.ns) ? body.ns : []).forEach((n) => { data.status[panel][String(n)] = { live: !!body.live, at }; });
+      (Array.isArray(body.ns) ? body.ns : []).forEach((n) => { data.status[panel][String(n)] = { live: !!body.live, at, by: who }; });
     } else if (body.action === 'editCircuit') {
       const n = String(body.n);
       data.circuits[panel] = data.circuits[panel] || {};
@@ -75,7 +77,7 @@ export default async (req) => {
         amps: body.amps === '' || body.amps == null ? '' : Number(body.amps),
         poles: body.poles === '' || body.poles == null ? '' : Number(body.poles),
       };
-      data.edited[panel] = today(); // updates the panel's "DATE TYPED"
+      data.edited[panel] = { by: who, at: today() }; // updates the panel's "DATE TYPED" + who
     } else {
       return json({ ok: false, error: 'bad action' }, 400);
     }
