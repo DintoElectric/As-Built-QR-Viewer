@@ -11,7 +11,7 @@ const FN_OVR = '/.netlify/functions/overrides';
 
 // Shown at the bottom at all times. Wording can be adjusted here.
 const DISCLAIMER =
-  'REFERENCE ONLY — NOT A SAFE-TO-WORK DETERMINATION. The live/dead indicator and all information shown may be inaccurate or out of date. Never rely on this application to determine whether a panel is energized. Always verify de-energization by lockout/tagout and appropriate testing before working. Paul Dinto Electrical Contractors assumes no liability for any reliance on this application.';
+  'QUALIFIED PERSONNEL ONLY. Reference only — not a safe-to-work determination. Live/dead indications and all data shown may be inaccurate or out of date; never rely on this application to determine whether a panel or circuit is energized. Only qualified persons, as defined by NFPA 70E, may examine, adjust, service, or work on this equipment. Always establish an electrically safe work condition per NFPA 70E — apply lockout/tagout and verify the absence of voltage — before working. Paul Dinto Electrical Contractors assumes no liability for any reliance on this application.';
 
 // A QR slug is `{job}-{panel}` (e.g. 24118-LP2A). Panel designations contain
 // hyphens, so resolve against the real panel set: exact match, then strip job.
