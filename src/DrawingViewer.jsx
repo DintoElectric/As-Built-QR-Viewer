@@ -26,6 +26,8 @@ export default function DrawingViewer({ sheet, panel, selCircuit, linked, sheetI
   const [, forceTick] = useState(0);
   const [rendering, setRendering] = useState(false);
   const [printMenu, setPrintMenu] = useState(false);
+  const [printImg, setPrintImg] = useState(null);
+  const [printing, setPrinting] = useState(false);
 
   const scrollRef = useRef(null);
   const wrapRef = useRef(null);
@@ -253,26 +255,50 @@ export default function DrawingViewer({ sheet, panel, selCircuit, linked, sheetI
   // Print the drawing (highlights baked in) + detail box, at a chosen sheet size.
   // Letter uses the CSS default; larger sizes inject an @page override so the
   // sheet is sent to a plotter at full size (drawing scales to fill it).
-  const PRINT_SIZES = { '11x17': [17, 11], '24x36': [36, 24], '36x48': [48, 36] }; // [width,height] in, landscape
-  const doPrint = (key) => {
+  const PRINT_SIZES = { letter: [11, 8.5], '11x17': [17, 11], '24x36': [36, 24], '36x48': [48, 36] }; // [width,height] in, landscape
+  const doPrint = async (key) => {
     setPrintMenu(false);
-    const dim = PRINT_SIZES[key];
-    let styleEl = null;
-    if (dim) {
-      styleEl = document.createElement('style');
-      styleEl.id = 'dp-page-size';
-      styleEl.textContent = `@page dp { size: ${dim[0]}in ${dim[1]}in; margin: 0.5in; }`;
-      document.head.appendChild(styleEl);
-    }
+    if (!id || printing) return;
+    const dim = PRINT_SIZES[key] || PRINT_SIZES.letter;
+    // Reliable across browsers: set the DEFAULT @page size (named-page sizing is
+    // flaky). Only .drawing-print is visible during this print, so it's safe.
+    let styleEl = document.getElementById('dp-page-size');
+    if (!styleEl) { styleEl = document.createElement('style'); styleEl.id = 'dp-page-size'; document.head.appendChild(styleEl); }
+    styleEl.textContent = `@page { size: ${dim[0]}in ${dim[1]}in; margin: 0.5in; }`;
+
+    setPrinting(true);
+    // Render a high-resolution raster of the whole sheet (~170 DPI at the chosen
+    // size, capped) so text stays legible when the PDF/plot is zoomed. Falls back
+    // to the screen image if the big render fails (e.g. mobile canvas limits).
+    let hires = null;
+    try {
+      const doc = await getDoc(id);
+      const page = await doc.getPage(1);
+      const base = page.getViewport({ scale: 1 });
+      const targetW = Math.max(4000, Math.min(8000, Math.round(dim[0] * 170)));
+      const vp = page.getViewport({ scale: targetW / base.width });
+      const c = document.createElement('canvas');
+      c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+      await page.render({ canvasContext: ctx, viewport: vp }).promise;
+      hires = c.toDataURL('image/jpeg', 0.9);
+      c.width = 0; c.height = 0;
+      await new Promise((res) => { const im = new Image(); im.onload = res; im.onerror = res; im.src = hires; });
+    } catch (e) { hires = null; }
+    setPrintImg(hires);
+
     document.body.classList.add('mode-print-drawing');
     const done = () => {
       document.body.classList.remove('mode-print-drawing');
       if (styleEl && styleEl.parentNode) styleEl.parentNode.removeChild(styleEl);
+      setPrintImg(null);
+      setPrinting(false);
       window.removeEventListener('afterprint', done);
     };
     window.addEventListener('afterprint', done);
-    setTimeout(() => window.print(), 80);
-    setTimeout(done, 3000);
+    setTimeout(() => window.print(), 150);
+    setTimeout(done, 120000); // anti-leak only; afterprint does the real cleanup
   };
 
   return (
@@ -302,7 +328,7 @@ export default function DrawingViewer({ sheet, panel, selCircuit, linked, sheetI
           <button className="btn btn-ghost icon" onClick={zoomIn} aria-label="Zoom in" disabled={!hasImg}><Plus size={14} weight="bold" /></button>
           <button className="btn btn-ghost fit" onClick={zoomFit} disabled={!hasImg}>Fit</button>
           <span className="print-wrap">
-            <button className="btn btn-ghost fit" onClick={() => setPrintMenu((v) => !v)} disabled={!hasImg} title="Print / export this drawing with highlights">Print ▾</button>
+            <button className="btn btn-ghost fit" onClick={() => setPrintMenu((v) => !v)} disabled={!hasImg || printing} title="Print / export this drawing with highlights">{printing ? 'Preparing…' : 'Print ▾'}</button>
             {printMenu && (
               <>
                 <div className="print-menu-backdrop" onClick={() => setPrintMenu(false)} />
@@ -375,7 +401,7 @@ export default function DrawingViewer({ sheet, panel, selCircuit, linked, sheetI
           </div>
           <div className="dp-canvas-wrap">
             <div className="dp-canvas" style={{ aspectRatio: sheet.pdfW + '/' + sheet.pdfH }}>
-              <img src={img} alt={sheet.title} />
+              <img src={printImg || img} alt={sheet.title} />
               {buildOverlay(sheet, panel, selCircuit, 1, true)}
             </div>
           </div>
