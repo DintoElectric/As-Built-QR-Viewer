@@ -492,3 +492,36 @@ button:focus:not(:focus-visible) { outline: none; }
 
 /* Mobile: free up top-bar room for the Panels toggle */
 @media (max-width: 900px) { .topbar .tag-neutral { display: none; } }
+/* ---- Admin J-box circuit editor (full-screen overlay) ---- */
+.jbox-editor { position: fixed; inset: 0; z-index: 40; display: flex; flex-direction: column; background: var(--color-bg); }
+.jbe-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 16px; border-bottom: 1px solid var(--divider); }
+.jbe-title { font-size: 15px; font-weight: 600; }
+.jbe-count { font-size: 12px; color: var(--color-muted); }
+.jbe-search { max-width: 280px; min-height: 32px; }
+.jbe-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.jbe-actions { margin-left: auto; display: flex; gap: 6px; }
+.jbe-body { flex: 1; min-height: 0; overflow: auto; padding: 14px 16px 40px; }
+.jbe-hint { font-size: 12px; color: var(--color-muted); margin-bottom: 12px; }
+.jbe-group { margin-bottom: 18px; }
+.jbe-ghead { font-size: 12px; font-weight: 600; color: var(--color-accent); padding: 4px 0 6px; border-bottom: 1px solid var(--divider); }
+.jbe-ghead span { color: var(--color-muted); font-weight: 400; }
+.jbe-head, .jbe-row { display: grid; grid-template-columns: 130px 90px minmax(160px, 1fr) 180px 64px; gap: 10px; align-items: center; }
+.jbe-head { font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-muted); padding: 6px 6px 4px; }
+.jbe-row { padding: 3px 6px; border-radius: 6px; }
+.jbe-row:hover { background: color-mix(in srgb, var(--color-text) 4%, transparent); }
+.jbe-row.blank { background: color-mix(in srgb, #d9a441 13%, transparent); }
+.jbe-jb { font-size: 12.5px; color: var(--color-accent); }
+.jbe-tag { font-size: 12px; color: var(--color-text-2); text-align: center; }
+.jbe-sheets { font-size: 11px; color: var(--color-muted); overflow-wrap: anywhere; }
+.jbe-ckt { width: 100%; }
+
+/* J-box editor print-only table */
+.jbox-print { display: none; }
+@media print {
+  .jbox-editor { display: none !important; }
+  .jbox-print { display: block !important; color: #000; font-family: Arial, Helvetica, sans-serif; }
+  .jbp-title { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+  .jbp-table { width: 100%; border-collapse: collapse; font-size: 9px; }
+  .jbp-table th { background: #1f2a44; color: #fff; border: 1px solid #333; padding: 3px 4px; text-align: left; }
+  .jbp-table td { border: 1px solid #8a8a8a; padding: 2px 4px; }
+}
