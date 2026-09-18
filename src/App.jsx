@@ -95,6 +95,8 @@ export default function App() {
   const [full, setFull] = useState(false);
   const [collapsed, setCollapsed] = useState(!!slug);
   const [jboxEdit, setJboxEdit] = useState(false);
+  const [discShow, setDiscShow] = useState(true);   // safety disclaimer modal — shown on load
+  const [discAck, setDiscAck] = useState(false);    // acknowledged this load
 
   const applyOverrides = (d) => setOverrides({
     status: d.status || {}, circuits: d.circuits || {}, edited: d.edited || {},
@@ -544,8 +546,23 @@ export default function App() {
       </div>
     </div>
 
-    {/* Always-on safety disclaimer */}
-    <div className="disclaimer">{DISCLAIMER}</div>
+    {/* Safety disclaimer — full-screen acknowledgment gate on load, then a re-read bubble */}
+    {discShow && (
+      <div className="disc-modal" role="dialog" aria-modal="true" onClick={discAck ? () => setDiscShow(false) : undefined}>
+        <div className="disc-card scrolly" onClick={(e) => e.stopPropagation()}>
+          <div className="disc-title">Safety Notice — Read Before Use</div>
+          <div className="disc-text">{DISCLAIMER}</div>
+          <div className="disc-actions">
+            {discAck
+              ? <button className="btn btn-secondary" onClick={() => setDiscShow(false)}>Close</button>
+              : <button className="btn btn-primary disc-ack" onClick={() => { setDiscAck(true); setDiscShow(false); }}>I acknowledge</button>}
+          </div>
+        </div>
+      </div>
+    )}
+    {discAck && !discShow && (
+      <button className="disc-bubble" onClick={() => setDiscShow(true)} title="Read the safety notice again">Reference only — safety notice</button>
+    )}
 
     {/* Admin-only J-box circuit editor (full-screen overlay + print table) */}
     {jboxEdit && admin && (
