@@ -25,6 +25,7 @@ export default function DrawingViewer({ sheet, panel, selCircuit, linked, sheetI
   const [zoom, setZoom] = useState(1);
   const [, forceTick] = useState(0);
   const [rendering, setRendering] = useState(false);
+  const [printMenu, setPrintMenu] = useState(false);
 
   const scrollRef = useRef(null);
   const wrapRef = useRef(null);
@@ -173,13 +174,29 @@ export default function DrawingViewer({ sheet, panel, selCircuit, linked, sheetI
               (panelHere ? ` Panel ${panel} is drawn on this sheet — its callout is boxed.` : '')))
     : '';
 
-  // Print the drawing (highlights baked in) + a detail box, in landscape.
-  const printDrawing = () => {
+  // Print the drawing (highlights baked in) + detail box, at a chosen sheet size.
+  // Letter uses the CSS default; larger sizes inject an @page override so the
+  // sheet is sent to a plotter at full size (drawing scales to fill it).
+  const PRINT_SIZES = { '11x17': [17, 11], '24x36': [36, 24], '36x48': [48, 36] }; // [width,height] in, landscape
+  const doPrint = (key) => {
+    setPrintMenu(false);
+    const dim = PRINT_SIZES[key];
+    let styleEl = null;
+    if (dim) {
+      styleEl = document.createElement('style');
+      styleEl.id = 'dp-page-size';
+      styleEl.textContent = `@page dp { size: ${dim[0]}in ${dim[1]}in; margin: 0.5in; }`;
+      document.head.appendChild(styleEl);
+    }
     document.body.classList.add('mode-print-drawing');
-    const done = () => { document.body.classList.remove('mode-print-drawing'); window.removeEventListener('afterprint', done); };
+    const done = () => {
+      document.body.classList.remove('mode-print-drawing');
+      if (styleEl && styleEl.parentNode) styleEl.parentNode.removeChild(styleEl);
+      window.removeEventListener('afterprint', done);
+    };
     window.addEventListener('afterprint', done);
-    setTimeout(() => window.print(), 60);
-    setTimeout(done, 2000);
+    setTimeout(() => window.print(), 80);
+    setTimeout(done, 3000);
   };
 
   return (
@@ -208,7 +225,21 @@ export default function DrawingViewer({ sheet, panel, selCircuit, linked, sheetI
           <span className="mono zoom-read">{zoomLabel}</span>
           <button className="btn btn-ghost icon" onClick={zoomIn} aria-label="Zoom in" disabled={!hasImg}><Plus size={14} weight="bold" /></button>
           <button className="btn btn-ghost fit" onClick={zoomFit} disabled={!hasImg}>Fit</button>
-          <button className="btn btn-ghost fit" onClick={printDrawing} disabled={!hasImg} title="Print / export this drawing with highlights">Print</button>
+          <span className="print-wrap">
+            <button className="btn btn-ghost fit" onClick={() => setPrintMenu((v) => !v)} disabled={!hasImg} title="Print / export this drawing with highlights">Print ▾</button>
+            {printMenu && (
+              <>
+                <div className="print-menu-backdrop" onClick={() => setPrintMenu(false)} />
+                <div className="print-menu">
+                  <div className="print-menu-h">Print size</div>
+                  <button onClick={() => doPrint('letter')}>Letter (8.5 × 11)</button>
+                  <button onClick={() => doPrint('11x17')}>11 × 17</button>
+                  <button onClick={() => doPrint('24x36')}>24 × 36 · ARCH D</button>
+                  <button onClick={() => doPrint('36x48')}>36 × 48 · ARCH E</button>
+                </div>
+              </>
+            )}
+          </span>
           <button className="fbtn full-toggle" data-on={full ? '1' : '0'} onClick={onToggleFull}>
             {full ? <CornersIn size={14} /> : <CornersOut size={14} />} {full ? 'Exit full sheet' : 'Full sheet'}
           </button>
