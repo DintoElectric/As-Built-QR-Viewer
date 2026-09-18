@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -33,6 +33,8 @@ export default function DrawingViewer({ sheet, panel, selCircuit, linked, sheetI
   const tileTask = useRef(null);
   const tileBusy = useRef(false);
   const tileTimer = useRef(null);
+  const zoomRef = useRef(1);
+  const pendingAnchor = useRef(null);
 
   const id = sheet ? sheet.id : null;
   const imgKey = id ? id + '@' + BACKDROP_W : null;
@@ -134,6 +136,67 @@ export default function DrawingViewer({ sheet, panel, selCircuit, linked, sheetI
   useEffect(() => { if (hasImg) queueTile(); }, [zoom, id, full, hasImg, queueTile]);
 
   useEffect(() => () => clearTimeout(tileTimer.current), []);
+
+  // Keep a live copy of zoom for the native gesture handlers, and re-anchor the
+  // scroll position after each zoom change so zooming tracks the cursor/pinch.
+  useEffect(() => { zoomRef.current = zoom; }, [zoom]);
+  useLayoutEffect(() => {
+    const a = pendingAnchor.current;
+    if (a && scrollRef.current) {
+      scrollRef.current.scrollLeft = a.left;
+      scrollRef.current.scrollTop = a.top;
+      pendingAnchor.current = null;
+    }
+  }, [zoom]);
+
+  // ctrl+wheel (also how the browser reports trackpad pinch) + touchscreen
+  // two-finger pinch -> same adaptive zoom as the +/- buttons, anchored to the
+  // pointer. Plain scroll still pans the sheet. Native listeners so we can
+  // preventDefault (React attaches wheel as passive).
+  useEffect(() => {
+    const well = scrollRef.current;
+    if (!well) return undefined;
+    const clamp = (z) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z));
+    const anchorTo = (cur, next, cx, cy) => {
+      if (cur > 1) {
+        const rect = well.getBoundingClientRect();
+        const mx = cx - rect.left, my = cy - rect.top;
+        const r = next / cur;
+        pendingAnchor.current = { left: (well.scrollLeft + mx) * r - mx, top: (well.scrollTop + my) * r - my };
+      }
+      setZoom(next);
+    };
+    const onWheel = (e) => {
+      if (!e.ctrlKey) return;            // plain wheel keeps panning the sheet
+      e.preventDefault();                // stop the browser from zooming the page
+      const cur = zoomRef.current;
+      const next = clamp(cur * Math.exp(-e.deltaY * 0.0018));
+      if (next !== cur) anchorTo(cur, next, e.clientX, e.clientY);
+    };
+    let pinchDist = 0, pinchZoom = 1;
+    const twoDist = (ts) => Math.hypot(ts[0].clientX - ts[1].clientX, ts[0].clientY - ts[1].clientY);
+    const onTouchStart = (e) => { if (e.touches.length === 2) { pinchDist = twoDist(e.touches); pinchZoom = zoomRef.current; } };
+    const onTouchMove = (e) => {
+      if (e.touches.length !== 2 || !pinchDist) return;
+      e.preventDefault();
+      const cur = zoomRef.current;
+      const next = clamp(pinchZoom * (twoDist(e.touches) / pinchDist));
+      const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      if (next !== cur) anchorTo(cur, next, cx, cy);
+    };
+    const onTouchEnd = (e) => { if (e.touches.length < 2) pinchDist = 0; };
+    well.addEventListener('wheel', onWheel, { passive: false });
+    well.addEventListener('touchstart', onTouchStart, { passive: true });
+    well.addEventListener('touchmove', onTouchMove, { passive: false });
+    well.addEventListener('touchend', onTouchEnd, { passive: true });
+    return () => {
+      well.removeEventListener('wheel', onWheel);
+      well.removeEventListener('touchstart', onTouchStart);
+      well.removeEventListener('touchmove', onTouchMove);
+      well.removeEventListener('touchend', onTouchEnd);
+    };
+  }, [id, hasImg]);
 
   const zoomIn = () => setZoom((z) => Math.min(MAX_ZOOM, z * 1.5));
   const zoomOut = () => setZoom((z) => Math.max(MIN_ZOOM, z / 1.5));
