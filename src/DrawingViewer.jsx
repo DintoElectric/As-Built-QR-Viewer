@@ -158,11 +158,24 @@ export default function DrawingViewer({ sheet, panel, selCircuit, linked, sheetI
     if (!well) return undefined;
     const clamp = (z) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z));
     const anchorTo = (cur, next, cx, cy) => {
+      const rect = well.getBoundingClientRect();
+      const mx = cx - rect.left, my = cy - rect.top;
       if (cur > 1) {
-        const rect = well.getBoundingClientRect();
-        const mx = cx - rect.left, my = cy - rect.top;
+        // already width-based: content scales linearly with zoom
         const r = next / cur;
         pendingAnchor.current = { left: (well.scrollLeft + mx) * r - mx, top: (well.scrollTop + my) * r - my };
+      } else {
+        // zooming out of "Fit": find the point under the cursor on the drawing
+        // image, then map it onto the new width-based content so it stays put.
+        const imgEl = wrapRef.current && wrapRef.current.querySelector('img');
+        if (imgEl) {
+          const ir = imgEl.getBoundingClientRect();
+          const fx = Math.min(1, Math.max(0, (cx - ir.left) / ir.width));
+          const fy = Math.min(1, Math.max(0, (cy - ir.top) / ir.height));
+          const contentW = next * well.clientWidth;
+          const contentH = contentW * (ir.height / ir.width);
+          pendingAnchor.current = { left: fx * contentW - mx, top: fy * contentH - my };
+        }
       }
       setZoom(next);
     };
