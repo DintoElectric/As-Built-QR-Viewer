@@ -554,3 +554,11 @@ button:focus:not(:focus-visible) { outline: none; }
 .disc-bubble::before { content: '\26A0'; font-size: 12px; }
 .disc-bubble:hover { background: #3a1416; }
 @media print { .disc-modal, .disc-bubble { display: none !important; } }
+/* ---- Drawing print: size picker (plotter / large format) ---- */
+.print-wrap { position: relative; display: inline-flex; }
+.print-menu-backdrop { position: fixed; inset: 0; z-index: 40; }
+.print-menu { position: absolute; top: 100%; right: 0; margin-top: 4px; z-index: 41; background: var(--color-surface); border: 1px solid var(--color-hairline); border-radius: 8px; box-shadow: var(--shadow-md); padding: 6px; min-width: 190px; }
+.print-menu-h { font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-muted); padding: 4px 8px 6px; }
+.print-menu button { display: block; width: 100%; text-align: left; border: 0; background: transparent; color: var(--color-text); font: 400 12.5px/1.2 var(--font-body); padding: 8px; border-radius: 5px; cursor: pointer; white-space: nowrap; }
+.print-menu button:hover { background: color-mix(in srgb, var(--color-accent) 14%, transparent); }
+@media print { .print-menu, .print-menu-backdrop { display: none !important; } }
