@@ -1,18 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { Minus, Plus, CornersOut, CornersIn } from '@phosphor-icons/react';
-import { boxPlacements, distinctLabels, sheetFloor, floorOf } from './lib/schedule';
+import { boxPlacements, distinctLabels, sheetFloor, floorOf, naturalSort } from './lib/schedule';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
-// Non-state caches — deliberately module-scoped so they survive re-renders and
-// panel switches without re-rasterising: pdf.js documents keyed by sheet id,
-// and the fit-level backdrop JPEG keyed `{id}@{width}`.
 const docCache = new Map();
 const imgCache = new Map();
 
-const BACKDROP_W = 3000; // fit-level backdrop; the viewport tile carries zoom detail
+const BACKDROP_W = 3000;
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 16;
 
@@ -40,9 +38,6 @@ export default function DrawingViewer({ sheet, panel, selCircuit, linked, sheetI
   const img = imgKey ? imgCache.get(imgKey) : null;
   const hasImg = !!img && img !== 'error';
 
-  // The tile's geometry is set imperatively, so collapse it back to nothing
-  // before every pass — a stale tile otherwise inflates the scroll area and
-  // produces phantom scrollbars.
   const clearTile = useCallback(() => {
     const cv = tileRef.current;
     if (!cv) return;
@@ -51,9 +46,6 @@ export default function DrawingViewer({ sheet, panel, selCircuit, linked, sheetI
     Object.assign(cv.style, { left: '0px', top: '0px', width: '0px', height: '0px' });
   }, []);
 
-  // Bluebeam-style crispness: re-render only the VISIBLE region straight from
-  // the vector PDF at the current zoom, so glyphs are never limited by a page
-  // raster. Cancel any in-flight render before starting a new one.
   const renderTile = useCallback(async () => {
     const sc = scrollRef.current;
     const cv = tileRef.current;
@@ -86,7 +78,7 @@ export default function DrawingViewer({ sheet, panel, selCircuit, linked, sheetI
       const doc = await getDoc(id);
       const page = await doc.getPage(1);
       const base = page.getViewport({ scale: 1 });
-      const k = cw / vw;                       // canvas px per display px
+      const k = cw / vw;
       const scale = (dispW / base.width) * k;
       const vp = page.getViewport({ scale });
       cv.width = cw;
@@ -94,7 +86,6 @@ export default function DrawingViewer({ sheet, panel, selCircuit, linked, sheetI
       const ctx = cv.getContext('2d');
       ctx.fillStyle = '#fff';
       ctx.fillRect(0, 0, cw, ch);
-      // pdf.js render offset places the visible rectangle at the canvas origin.
       tileTask.current = page.render({ canvasContext: ctx, viewport: vp, transform: [1, 0, 0, 1, -vx * k, -vy * k] });
       await tileTask.current.promise;
       Object.assign(cv.style, { left: vx + 'px', top: vy + 'px', width: vw + 'px', height: vh + 'px', opacity: 1 });
@@ -110,7 +101,6 @@ export default function DrawingViewer({ sheet, panel, selCircuit, linked, sheetI
     tileTimer.current = setTimeout(renderTile, 130);
   }, [renderTile, clearTile]);
 
-  // Backdrop: render the full page once to a 3000px canvas, cache as JPEG.
   useEffect(() => {
     if (!id || imgCache.has(imgKey)) { if (id) queueTile(); return; }
     let cancelled = false;
@@ -140,7 +130,6 @@ export default function DrawingViewer({ sheet, panel, selCircuit, linked, sheetI
     return () => { cancelled = true; };
   }, [id, imgKey, queueTile]);
 
-  // Re-tile on zoom / sheet / full-mode change.
   useEffect(() => { if (hasImg) queueTile(); }, [zoom, id, full, hasImg, queueTile]);
 
   useEffect(() => () => clearTimeout(tileTimer.current), []);
@@ -156,7 +145,6 @@ export default function DrawingViewer({ sheet, panel, selCircuit, linked, sheetI
   const fit = zoom === 1;
   const zoomLabel = Math.round(zoom * 100) + '%';
 
-  // ---- overlay geometry ----
   const overlay = sheet ? buildOverlay(sheet, panel, selCircuit, zoom, hasImg) : null;
 
   const placements = boxPlacements(sheet, panel);
@@ -166,6 +154,14 @@ export default function DrawingViewer({ sheet, panel, selCircuit, linked, sheetI
     : 0;
   const offFloor = sheet ? sheetFloor(sheet.id) !== floorOf(panel) : false;
   const panelHere = sheet ? (sheet.panels || []).some((p) => p.panel === panel) : false;
+
+  // Labels currently highlighted (for the print detail box).
+  const hlLabels = sheet
+    ? (selCircuit
+        ? distinctLabels(placements.filter((b) => (b.circuits || []).includes(selCircuit)))
+        : distinctLabels(placements)).sort(naturalSort)
+    : [];
+
   const note = sheet
     ? (selCircuit
         ? `Circuit ${selCircuit} of ${panel}: ${circuitCount} of ${labelCount} J-box${labelCount === 1 ? '' : 'es'} on this sheet carr${circuitCount === 1 ? 'ies' : 'y'} it, highlighted.`
@@ -176,6 +172,15 @@ export default function DrawingViewer({ sheet, panel, selCircuit, linked, sheetI
               '. Parentheses are box tags, not circuits.' +
               (panelHere ? ` Panel ${panel} is drawn on this sheet — its callout is boxed.` : '')))
     : '';
+
+  // Print the drawing (highlights baked in) + a detail box, in landscape.
+  const printDrawing = () => {
+    document.body.classList.add('mode-print-drawing');
+    const done = () => { document.body.classList.remove('mode-print-drawing'); window.removeEventListener('afterprint', done); };
+    window.addEventListener('afterprint', done);
+    setTimeout(() => window.print(), 60);
+    setTimeout(done, 2000);
+  };
 
   return (
     <div className="viewer">
@@ -203,6 +208,7 @@ export default function DrawingViewer({ sheet, panel, selCircuit, linked, sheetI
           <span className="mono zoom-read">{zoomLabel}</span>
           <button className="btn btn-ghost icon" onClick={zoomIn} aria-label="Zoom in" disabled={!hasImg}><Plus size={14} weight="bold" /></button>
           <button className="btn btn-ghost fit" onClick={zoomFit} disabled={!hasImg}>Fit</button>
+          <button className="btn btn-ghost fit" onClick={printDrawing} disabled={!hasImg} title="Print / export this drawing with highlights">Print</button>
           <button className="fbtn full-toggle" data-on={full ? '1' : '0'} onClick={onToggleFull}>
             {full ? <CornersIn size={14} /> : <CornersOut size={14} />} {full ? 'Exit full sheet' : 'Full sheet'}
           </button>
@@ -247,33 +253,46 @@ export default function DrawingViewer({ sheet, panel, selCircuit, linked, sheetI
           </div>
         </div>
       )}
+
+      {/* Print-only: the drawing with highlights baked in + a detail box (landscape). */}
+      {sheet && hasImg && createPortal(
+        <div className="drawing-print">
+          <div className="dp-detail">
+            <img className="dp-logo" src="/dinto-logo.png" alt="Dinto" />
+            <div className="dp-lines">
+              <div><b>Sheet</b> {sheet.id} — {sheet.title}</div>
+              <div><b>Panel</b> {panel}</div>
+              <div><b>Circuit filter</b> {selCircuit ? ('Circuit ' + selCircuit) : "None — all of this panel's J-boxes"}</div>
+              <div><b>Highlighted J-boxes ({hlLabels.length})</b> {hlLabels.join(', ') || '—'}</div>
+            </div>
+          </div>
+          <div className="dp-canvas-wrap">
+            <div className="dp-canvas" style={{ aspectRatio: sheet.pdfW + '/' + sheet.pdfH }}>
+              <img src={img} alt={sheet.title} />
+              {buildOverlay(sheet, panel, selCircuit, 1, true)}
+            </div>
+          </div>
+          <div className="dp-foot">REFERENCE ONLY — NOT A SAFE-TO-WORK DETERMINATION. Verify de-energization per NFPA 70E before working. Paul Dinto Electrical Contractors.</div>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }
 
-// The tags are stacked callout text, not symbol positions — so the highlight is
-// a box drawn over the printed label itself, which lands on the text the user
-// reads. Matching panel's boxes glow + fill; every other tag is a faint outline.
-// Panel callouts (grey-boxed panel names) get the same treatment on their own
-// layer: the selected panel's callout is boxed heavily, others faintly.
-// No dot markers, no run lines (the parenthetical is a box tag, not a circuit).
 function buildOverlay(sheet, panel, selCircuit, zoom, hasImg) {
-  const h = 1000 * sheet.pdfH / sheet.pdfW; // do NOT round — rounding reintroduces the aspect drift
-  const k = Math.sqrt(zoom || 1);           // keep boxes proportionate as the sheet magnifies
+  const h = 1000 * sheet.pdfH / sheet.pdfW;
+  const k = Math.sqrt(zoom || 1);
   const others = [];
-  const dimmed = [];  // panel's own boxes that DON'T carry the selected circuit
+  const dimmed = [];
   const hits = [];
 
   sheet.jboxes.forEach((b, i) => {
-    // stored y is the text BASELINE, so subtract the height for the top edge
     const x = 1000 * b.x;
     const y = h * (b.y - b.h);
     const w = 1000 * b.w;
     const bh = h * b.h;
     if (b.panel === panel) {
-      // With a circuit selected, only boxes carrying that circuit stay lit; the
-      // panel's other boxes drop to a faint accent outline so they read as
-      // "this panel, but not this circuit" rather than vanishing.
       if (!selCircuit || (b.circuits || []).includes(selCircuit)) {
         hits.push({ i, x, y, w, bh });
       } else {
@@ -304,11 +323,6 @@ function buildOverlay(sheet, panel, selCircuit, zoom, hasImg) {
     );
   });
 
-  // Panel callouts (grey-boxed panel names on the plan). Same box-over-the-text
-  // technique as J-boxes, but the SELECTED panel's own callout gets a heavier,
-  // solid fill so "the panel itself" reads distinctly from "its J-boxes" (both
-  // are highlighted at once). Every other callout gets a faint accent-tinted
-  // outline so panels stay identifiable without competing with the selection.
   const panelEls = [];
   (sheet.panels || []).forEach((pnl, i) => {
     const x = 1000 * pnl.x;
@@ -336,9 +350,6 @@ function buildOverlay(sheet, panel, selCircuit, zoom, hasImg) {
   return (
     <svg
       viewBox={'0 0 1000 ' + h}
-      // The overlay box IS the image box, so stretch the viewBox to it exactly.
-      // The default (meet) letterboxes on a sub-pixel aspect diff and shifts
-      // every highlight — the alignment bug the handoff warns about.
       preserveAspectRatio={hasImg ? 'none' : 'xMidYMid meet'}
       style={hasImg ? { position: 'absolute', inset: 0, width: '100%', height: '100%' } : { width: '100%', display: 'block' }}
     >
