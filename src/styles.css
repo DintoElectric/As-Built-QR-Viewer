@@ -562,3 +562,16 @@ button:focus:not(:focus-visible) { outline: none; }
 .print-menu button { display: block; width: 100%; text-align: left; border: 0; background: transparent; color: var(--color-text); font: 400 12.5px/1.2 var(--font-body); padding: 8px; border-radius: 5px; cursor: pointer; white-space: nowrap; }
 .print-menu button:hover { background: color-mix(in srgb, var(--color-accent) 14%, transparent); }
 @media print { .print-menu, .print-menu-backdrop { display: none !important; } }
+/* ---- Print: force a white page (mobile/iOS prints the dark theme bg otherwise) ---- */
+@media print {
+  html, body, #root { background: #ffffff !important; }
+  .print-schedule, .drawing-print, .jbox-print {
+    background: #ffffff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .print-schedule *, .drawing-print *, .jbox-print * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
