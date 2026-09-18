@@ -1,18 +1,20 @@
 // Shared, admin-editable layer stored in Netlify Blobs and merged on top of the
-// static panels.json by the app. Everyone can GET it (statuses + edits are
-// public); only a valid admin token may POST changes.
+// static panels.json + drawings.json by the app. Everyone can GET it (statuses,
+// circuit edits and J-box circuits are public); only a valid admin token may POST.
 //
 //   GET  -> { status:{panel:{n:{live,at}}}, panelStatus:{panel:{live,at}},
-//            circuits:{panel:{n:{desc,amps,poles}}}, edited:{panel:{by,at}} }
-//   POST { action:'setStatus',   panel, n, live }                 (admin)
-//   POST { action:'setPanelStatus', panel, live }                 (admin)
-//   POST { action:'setAllStatus', panel, live, ns }               (admin)
-//   POST { action:'editCircuit',  panel, n, desc, amps, poles }   (admin) — stamps edited{by,at}
+//            circuits:{panel:{n:{desc,amps,poles}}}, edited:{panel:{by,at}},
+//            jboxCircuits:{label:[ckt,...]} }
+//   POST { action:'setStatus',      panel, n, live }                (admin)
+//   POST { action:'setPanelStatus', panel, live }                   (admin)
+//   POST { action:'setAllStatus',   panel, live, ns }               (admin)
+//   POST { action:'editCircuit',    panel, n, desc, amps, poles }   (admin) — stamps edited{by,at}
+//   POST { action:'setJboxCircuits', label, circuits:[..] }         (admin) — J-box editor screen
 import { getStore } from '@netlify/blobs';
 import crypto from 'node:crypto';
 
 const KEY = 'data';
-const EMPTY = { status: {}, circuits: {}, edited: {}, panelStatus: {} };
+const EMPTY = { status: {}, circuits: {}, edited: {}, panelStatus: {}, jboxCircuits: {} };
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
@@ -37,11 +39,18 @@ function today() {
   return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
 }
 
+// normalize a circuits value (array or comma string) -> array of trimmed strings
+function toCircuits(v) {
+  const arr = Array.isArray(v) ? v : String(v == null ? '' : v).split(',');
+  return arr.map((x) => String(x).trim()).filter(Boolean);
+}
+
 export default async (req) => {
   const store = getStore({ name: 'asbuilt-overrides', consistency: req.method === 'POST' ? 'strong' : 'eventual' });
 
   if (req.method === 'GET') {
     const data = (await store.get(KEY, { type: 'json' })) || EMPTY;
+    if (!data.jboxCircuits) data.jboxCircuits = {};
     return json(data);
   }
 
@@ -53,7 +62,18 @@ export default async (req) => {
     let body = {};
     try { body = await req.json(); } catch { return json({ ok: false, error: 'bad body' }, 400); }
     const data = (await store.get(KEY, { type: 'json' })) || structuredClone(EMPTY);
-    data.status = data.status || {}; data.circuits = data.circuits || {}; data.edited = data.edited || {}; data.panelStatus = data.panelStatus || {};
+    data.status = data.status || {}; data.circuits = data.circuits || {}; data.edited = data.edited || {};
+    data.panelStatus = data.panelStatus || {}; data.jboxCircuits = data.jboxCircuits || {};
+
+    if (body.action === 'setJboxCircuits') {
+      const label = String(body.label || '');
+      if (!label) return json({ ok: false, error: 'no label' }, 400);
+      const ckts = toCircuits(body.circuits);
+      if (ckts.length) data.jboxCircuits[label] = ckts;
+      else delete data.jboxCircuits[label]; // empty = clear the override (falls back to static)
+      await store.setJSON(KEY, data);
+      return json({ ok: true, data });
+    }
 
     const panel = String(body.panel || '');
     if (!panel) return json({ ok: false, error: 'no panel' }, 400);
@@ -77,7 +97,7 @@ export default async (req) => {
         amps: body.amps === '' || body.amps == null ? '' : Number(body.amps),
         poles: body.poles === '' || body.poles == null ? '' : Number(body.poles),
       };
-      data.edited[panel] = { by: who, at: today() }; // updates the panel's "DATE TYPED" + who
+      data.edited[panel] = { by: who, at: today() };
     } else {
       return json({ ok: false, error: 'bad action' }, 400);
     }
