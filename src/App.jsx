@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import DrawingViewer from './DrawingViewer';
+import JboxEditor from './JboxEditor';
 import {
   floorOf, sheetFloor, linkedSheets, boxPlacements, distinctLabels,
   breaker, isSpare, sourceLabel, FLOOR_ORDER, naturalSort,
@@ -9,12 +10,9 @@ import {
 const FN_LOGIN = '/.netlify/functions/admin-login';
 const FN_OVR = '/.netlify/functions/overrides';
 
-// Shown at the bottom at all times. Wording can be adjusted here.
 const DISCLAIMER =
   'QUALIFIED PERSONNEL ONLY. Reference only — not a safe-to-work determination. Live/dead indications and all data shown may be inaccurate or out of date; never rely on this application to determine whether a panel or circuit is energized. Only qualified persons, as defined by NFPA 70E, may examine, adjust, service, or work on this equipment. Always establish an electrically safe work condition per NFPA 70E — apply lockout/tagout and verify the absence of voltage — before working. Paul Dinto Electrical Contractors assumes no liability for any reliance on this application.';
 
-// A QR slug is `{job}-{panel}` (e.g. 24118-LP2A). Panel designations contain
-// hyphens, so resolve against the real panel set: exact match, then strip job.
 function panelFromSlug(slug, panels) {
   if (!slug) return null;
   const names = new Set(panels.map((p) => p.panel));
@@ -25,8 +23,6 @@ function panelFromSlug(slug, panels) {
   return null;
 }
 
-// Build two-column schedule rows (odd left, even right), merging multi-pole
-// breakers across the rows they occupy — matches the printed panel-schedule.
 function buildScheduleRows(circuits) {
   const byN = {}; circuits.forEach((c) => { byN[c.n] = c; });
   const maxN = circuits.length ? Math.max(...circuits.map((c) => c.n)) : 0;
@@ -50,14 +46,9 @@ function buildScheduleRows(circuits) {
   return { rows, maxN };
 }
 
-// Expand each breaker into per-pole display rows: a 3-pole breaker at ckt 1
-// shows as circuits 1, 3, 5 — all sharing the breaker's status + description.
 function expandSide(circuits) {
   const byN = {}; circuits.forEach((c) => { byN[c.n] = c; });
   const out = []; const covered = new Set();
-  // Walk in circuit order; a multi-pole breaker absorbs the next same-side
-  // slots (join). An absorbed slot never renders its own row (no duplicates);
-  // dropping a breaker's poles frees those slots back to blank/unused (split).
   circuits.map((c) => c.n).sort((a, b) => a - b).forEach((n) => {
     if (covered.has(n)) return;
     const c = byN[n]; const p = c.poles || 1;
@@ -84,15 +75,14 @@ export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [locations, setLocations] = useState({});
 
-  // Admin-editable overlay (statuses + circuit edits) shared via Netlify Blobs.
-  const [overrides, setOverrides] = useState({ status: {}, circuits: {}, edited: {}, panelStatus: {} });
+  const [overrides, setOverrides] = useState({ status: {}, circuits: {}, edited: {}, panelStatus: {}, jboxCircuits: {} });
   const [token, setToken] = useState(() => sessionStorage.getItem('adminToken') || '');
   const admin = !!token;
   const [loginOpen, setLoginOpen] = useState(false);
   const [code, setCode] = useState('');
   const [loginErr, setLoginErr] = useState('');
   const [busy, setBusy] = useState(false);
-  const [edits, setEdits] = useState({});      // circuit edits in progress, keyed by ckt #
+  const [edits, setEdits] = useState({});
   const [savingN, setSavingN] = useState(null);
   const [statusBusyN, setStatusBusyN] = useState(null);
 
@@ -103,9 +93,14 @@ export default function App() {
   const [floor, setFloor] = useState('All');
   const [sheetId, setSheetId] = useState(null);
   const [full, setFull] = useState(false);
-  const [collapsed, setCollapsed] = useState(!!slug); // panel list collapsed (auto on QR entry)
+  const [collapsed, setCollapsed] = useState(!!slug);
+  const [jboxEdit, setJboxEdit] = useState(false);
 
-  // Static base data.
+  const applyOverrides = (d) => setOverrides({
+    status: d.status || {}, circuits: d.circuits || {}, edited: d.edited || {},
+    panelStatus: d.panelStatus || {}, jboxCircuits: d.jboxCircuits || {},
+  });
+
   useEffect(() => {
     let alive = true;
     Promise.all([
@@ -119,12 +114,8 @@ export default function App() {
     return () => { alive = false; };
   }, []);
 
-  // Shared overrides — loaded on mount and refreshed when the tab regains focus,
-  // so the live/dead light stays current without a full reload.
   const refreshOverrides = () => {
-    fetch(FN_OVR).then((r) => (r.ok ? r.json() : null)).then((d) => {
-      if (d) setOverrides({ status: d.status || {}, circuits: d.circuits || {}, edited: d.edited || {}, panelStatus: d.panelStatus || {} });
-    }).catch(() => { /* backend not up yet — app still works read-only */ });
+    fetch(FN_OVR).then((r) => (r.ok ? r.json() : null)).then((d) => { if (d) applyOverrides(d); }).catch(() => { /* backend not up yet */ });
   };
   useEffect(() => {
     refreshOverrides();
@@ -134,12 +125,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape' && full) setFull(false); };
+    const onKey = (e) => { if (e.key === 'Escape') { if (jboxEdit) setJboxEdit(false); else if (full) setFull(false); } };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [full]);
+  }, [full, jboxEdit]);
 
-  // Merge circuit edits + edited "date typed" onto the static panels.
   const panels = useMemo(() => rawPanels.map((p) => {
     const ce = overrides.circuits[p.panel];
     const ed = overrides.edited[p.panel];
@@ -148,11 +138,19 @@ export default function App() {
       const o = ce[String(c.n)];
       return o ? { ...c, desc: o.desc, amps: o.amps === '' ? '' : o.amps, poles: o.poles === '' ? '' : o.poles } : c;
     }) : p.circuits;
-    const edAt = ed ? (typeof ed === 'string' ? ed : ed.at) : null;     // legacy string or { by, at }
+    const edAt = ed ? (typeof ed === 'string' ? ed : ed.at) : null;
     const edBy = ed && typeof ed === 'object' ? ed.by : null;
     const meta = edAt ? { ...(p.meta || {}), date: edAt, editedBy: edBy } : p.meta;
     return { ...p, circuits, meta };
   }), [rawPanels, overrides]);
+
+  // Merge admin J-box circuit overrides over the static sheets so the drawing
+  // highlights + circuit filter reflect edits everywhere.
+  const mergedSheets = useMemo(() => {
+    const jc = overrides.jboxCircuits || {};
+    if (!Object.keys(jc).length) return sheets;
+    return sheets.map((s) => ({ ...s, jboxes: s.jboxes.map((b) => (jc[b.label] ? { ...b, circuits: jc[b.label] } : b)) }));
+  }, [sheets, overrides.jboxCircuits]);
 
   const circuitLive = (name, n) => { const s = overrides.status[name]; return !!(s && s[String(n)] && s[String(n)].live); };
   const anyCircuitLive = (name) => { const s = overrides.status[name]; return !!(s && Object.values(s).some((v) => v && v.live)); };
@@ -164,10 +162,9 @@ export default function App() {
   const presentFloors = FLOOR_ORDER.filter((g) => panels.some((p) => floorOf(p.panel) === g));
 
   const panel = panels.find((p) => p.panel === sel) || null;
-  const linked = linkedSheets(sheets, sel);
+  const linked = linkedSheets(mergedSheets, sel);
   const sheet = linked.find((s) => s.id === sheetId) || linked[0] || null;
 
-  // Resolve the QR-scanned panel once data is in; otherwise land on the first.
   useEffect(() => {
     if (!panels.length || sel) return;
     setSel(panelFromSlug(slug, panels) || panels[0].panel);
@@ -198,7 +195,6 @@ export default function App() {
     else { setSelCircuit(cn); setPick({ tag: panel.panel + ' · ckt ' + dn, desc: c.desc, bk: breaker(c) }); }
   };
 
-  // ---- admin ----
   const doLogin = async () => {
     setBusy(true); setLoginErr('');
     try {
@@ -220,7 +216,7 @@ export default function App() {
       });
       if (r.status === 401) { logout(); setLoginErr('Session expired — log in again.'); }
       const d = await r.json().catch(() => null);
-      if (d && d.data) setOverrides({ status: d.data.status || {}, circuits: d.data.circuits || {}, edited: d.data.edited || {}, panelStatus: d.data.panelStatus || {} });
+      if (d && d.data) applyOverrides(d.data);
     } catch { /* ignore */ }
     setStatusBusyN(null);
   };
@@ -234,7 +230,7 @@ export default function App() {
       });
       if (r.status === 401) { logout(); setLoginErr('Session expired — log in again.'); }
       const d = await r.json().catch(() => null);
-      if (d && d.data) setOverrides({ status: d.data.status || {}, circuits: d.data.circuits || {}, edited: d.data.edited || {}, panelStatus: d.data.panelStatus || {} });
+      if (d && d.data) applyOverrides(d.data);
     } catch { /* ignore */ }
     setBusy(false);
   };
@@ -248,7 +244,7 @@ export default function App() {
       });
       if (r.status === 401) { logout(); setLoginErr('Session expired — log in again.'); }
       const d = await r.json().catch(() => null);
-      if (d && d.data) setOverrides({ status: d.data.status || {}, circuits: d.data.circuits || {}, edited: d.data.edited || {}, panelStatus: d.data.panelStatus || {} });
+      if (d && d.data) applyOverrides(d.data);
     } catch { /* ignore */ }
     setBusy(false);
   };
@@ -269,11 +265,24 @@ export default function App() {
       if (r.status === 401) { logout(); setLoginErr('Session expired — log in again.'); }
       const d = await r.json().catch(() => null);
       if (d && d.data) {
-        setOverrides({ status: d.data.status || {}, circuits: d.data.circuits || {}, edited: d.data.edited || {}, panelStatus: d.data.panelStatus || {} });
+        applyOverrides(d.data);
         setEdits((prev) => { const n = { ...prev }; delete n[c.n]; return n; });
       }
     } catch { /* ignore */ }
     setSavingN(null);
+  };
+
+  // J-box editor save — updates the shared J-box circuit map.
+  const saveJbox = async (label, circuits) => {
+    if (!admin) return;
+    const r = await fetch(FN_OVR, {
+      method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + token },
+      body: JSON.stringify({ action: 'setJboxCircuits', label, circuits }),
+    });
+    if (r.status === 401) { logout(); setLoginErr('Session expired — log in again.'); throw new Error('unauthorized'); }
+    const d = await r.json().catch(() => null);
+    if (d && d.data) applyOverrides(d.data);
+    else throw new Error('save failed');
   };
 
   const placements = boxPlacements(sheet, sel);
@@ -312,7 +321,6 @@ export default function App() {
   const liveCount = panel ? panel.circuits.filter((c) => circuitLive(panel.panel, c.n)).length : 0;
   const plive = panel ? panelLive(panel.panel) : false;
   const location = sel ? locations[sel] : null;
-  // live/dead per circuit number (a multi-pole breaker's poles all share its state)
   const liveMap = {};
   if (panel) {
     const byN = {}; panel.circuits.forEach((c) => { byN[c.n] = c; });
@@ -343,7 +351,11 @@ export default function App() {
         {!loaded && <span className="status">loading schedules…</span>}
         <div className="admin-box">
           {admin ? (
-            <><span className="tag tag-accent">Admin</span><button className="btn btn-ghost" onClick={logout}>Log out</button></>
+            <>
+              <button className="btn btn-secondary" onClick={() => setJboxEdit(true)}>Edit J-boxes</button>
+              <span className="tag tag-accent">Admin</span>
+              <button className="btn btn-ghost" onClick={logout}>Log out</button>
+            </>
           ) : loginOpen ? (
             <div className="admin-login">
               <input className="input" style={{ width: 110 }} type="password" inputMode="numeric" placeholder="Admin code"
@@ -411,7 +423,6 @@ export default function App() {
                 <div className="source-line">{sourceLabel(panel)} · {panel.circuits.length} circuits scheduled · {spareCount} spare</div>
                 {location && <div style={{ fontSize: 12.5, color: 'var(--color-text-2)', marginTop: 8 }}><span style={{ color: 'var(--color-accent)', fontWeight: 600 }}>Location</span> · {location}</div>}
 
-                {/* Panel-level power — independent of the individual circuits */}
                 <div className={'status-summary ' + (plive ? 'has-live' : 'none-live')}>
                   <span className={'lamp big ' + (plive ? 'on' : 'off')} />
                   <span className="status-text">Panel power {plive ? '— ON (energized)' : '— off'}</span>
@@ -422,7 +433,6 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Per-circuit live/dead summary — each circuit is toggled in the schedule below */}
                 <div className={'status-summary ' + (liveCount > 0 ? 'has-live' : 'none-live')}>
                   <span className={'lamp big ' + (liveCount > 0 ? 'on' : 'off')} />
                   <span className="status-text">{liveCount} of {panel.circuits.length} circuits marked live</span>
@@ -537,8 +547,13 @@ export default function App() {
     {/* Always-on safety disclaimer */}
     <div className="disclaimer">{DISCLAIMER}</div>
 
-    {/* Print-only panel schedule (browser Print / Save-as-PDF). QR top-right. */}
-    {panel && (
+    {/* Admin-only J-box circuit editor (full-screen overlay + print table) */}
+    {jboxEdit && admin && (
+      <JboxEditor sheets={mergedSheets} onSave={saveJbox} onClose={() => setJboxEdit(false)} />
+    )}
+
+    {/* Print-only panel schedule (suppressed while the J-box editor is open) */}
+    {panel && !jboxEdit && (
       <div className="print-schedule">
         <div className="ps-head">
           <img className="ps-logo" src="/dinto-logo.png" alt="Dinto Electrical Contractors" />
