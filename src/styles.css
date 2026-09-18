@@ -575,3 +575,5 @@ button:focus:not(:focus-visible) { outline: none; }
     print-color-adjust: exact !important;
   }
 }
+/* Use the default @page for the drawing print (size injected at print time) */
+.drawing-print { page: auto; }
