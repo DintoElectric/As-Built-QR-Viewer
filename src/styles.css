@@ -542,3 +542,15 @@ button:focus:not(:focus-visible) { outline: none; }
 .drawing-print .dp-canvas img { width: 100%; height: 100%; display: block; }
 .drawing-print .dp-canvas svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .drawing-print .dp-foot { flex: none; margin-top: 6px; font-size: 7.5px; color: #b3202f; font-weight: 700; text-align: center; }
+/* ---- Safety disclaimer: modal gate on load + re-read bubble (replaces bottom bar) ---- */
+:root { --footer: 0px; }  /* no persistent bar to reserve space for now */
+.disc-modal { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(10, 11, 16, 0.8); }
+.disc-card { max-width: 560px; width: 100%; max-height: 86vh; overflow: auto; background: var(--color-surface); border: 1px solid #5b2d30; border-top: 4px solid #e5484d; border-radius: 12px; padding: 22px; box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6); }
+.disc-title { font-size: 15px; font-weight: 700; color: #ffd7d9; letter-spacing: 0.03em; text-transform: uppercase; margin-bottom: 12px; }
+.disc-text { font-size: 13px; line-height: 1.6; color: var(--color-text); }
+.disc-actions { margin-top: 18px; display: flex; justify-content: flex-end; }
+.disc-ack { min-width: 160px; font-weight: 600; }
+.disc-bubble { position: fixed; bottom: 12px; left: 12px; z-index: 30; display: inline-flex; align-items: center; gap: 6px; border: 1px solid #5b2d30; background: #2a0e10; color: #ffd7d9; font: 600 11.5px/1 var(--font-heading); padding: 8px 12px; border-radius: 999px; cursor: pointer; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4); }
+.disc-bubble::before { content: '\26A0'; font-size: 12px; }
+.disc-bubble:hover { background: #3a1416; }
+@media print { .disc-modal, .disc-bubble { display: none !important; } }
