@@ -347,6 +347,7 @@ function buildOverlay(sheet, panel, selCircuit, zoom, hasImg, circuitLive) {
   const cktTexts = [];
   if (circuitLive) {
     sheet.jboxes.forEach((b, i) => {
+      if (b.panel !== panel) return;      // only the selected panel's J-boxes
       const cks = b.circuits || [];
       if (!cks.length) return;
       const x = 1000 * b.x;
