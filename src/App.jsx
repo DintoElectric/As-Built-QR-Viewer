@@ -95,8 +95,8 @@ export default function App() {
   const [full, setFull] = useState(false);
   const [collapsed, setCollapsed] = useState(!!slug);
   const [jboxEdit, setJboxEdit] = useState(false);
-  const [discShow, setDiscShow] = useState(true);   // safety disclaimer modal — shown on load
-  const [discAck, setDiscAck] = useState(false);    // acknowledged this load
+  const [discShow, setDiscShow] = useState(true);
+  const [discAck, setDiscAck] = useState(false);
 
   const applyOverrides = (d) => setOverrides({
     status: d.status || {}, circuits: d.circuits || {}, edited: d.edited || {},
@@ -146,8 +146,6 @@ export default function App() {
     return { ...p, circuits, meta };
   }), [rawPanels, overrides]);
 
-  // Merge admin J-box circuit overrides over the static sheets so the drawing
-  // highlights + circuit filter reflect edits everywhere.
   const mergedSheets = useMemo(() => {
     const jc = overrides.jboxCircuits || {};
     if (!Object.keys(jc).length) return sheets;
@@ -274,7 +272,6 @@ export default function App() {
     setSavingN(null);
   };
 
-  // J-box editor save — updates the shared J-box circuit map.
   const saveJbox = async (label, circuits) => {
     if (!admin) return;
     const r = await fetch(FN_OVR, {
@@ -321,7 +318,8 @@ export default function App() {
       ? (admin ? '380px minmax(0,1fr)' : '300px minmax(0,1fr)')
       : (admin ? '196px 380px minmax(0,1fr)' : '196px 300px minmax(0,1fr)');
   const liveCount = panel ? panel.circuits.filter((c) => circuitLive(panel.panel, c.n)).length : 0;
-  const plive = panel ? panelLive(panel.panel) : false;
+  const pExplicit = panel ? panelLive(panel.panel) : false;
+  const plive = panel ? (pExplicit || anyCircuitLive(panel.panel)) : false; // any live circuit forces panel live
   const location = sel ? locations[sel] : null;
   const liveMap = {};
   if (panel) {
@@ -333,7 +331,7 @@ export default function App() {
       for (let k = 0; k < pn; k++) { liveMap[n + 2 * k] = lv; if (k > 0) covered.add(n + 2 * k); }
     });
   }
-  const cktColor = (n) => (n in liveMap ? (liveMap[n] ? '#137a2e' : '#b3202f') : undefined);
+  const cktColor = (n) => (n in liveMap ? (liveMap[n] ? '#b3202f' : '#137a2e') : undefined); // live = red, dead = green
 
   return (
     <>
@@ -430,7 +428,7 @@ export default function App() {
                   <span className="status-text">Panel power {plive ? '— ON (energized)' : '— off'}</span>
                   {admin && (
                     <span className="bulk">
-                      <button className="btn btn-secondary" disabled={busy} onClick={() => setPanelStatus(!plive)}>{plive ? 'Mark panel dead' : 'Mark panel live'}</button>
+                      <button className="btn btn-secondary" disabled={busy} onClick={() => setPanelStatus(!pExplicit)}>{pExplicit ? 'Mark panel dead' : 'Mark panel live'}</button>
                     </span>
                   )}
                 </div>
@@ -541,7 +539,7 @@ export default function App() {
         <DrawingViewer
           sheet={sheet} panel={sel} selCircuit={selCircuit} linked={linked}
           sheetId={sheet ? sheet.id : null} onPickSheet={setSheetId} location={location}
-          full={full} onToggleFull={() => setFull((v) => !v)}
+          full={full} onToggleFull={() => setFull((v) => !v)} circuitLive={circuitLive}
         />
       </div>
     </div>
@@ -564,18 +562,15 @@ export default function App() {
       <button className="disc-bubble" onClick={() => setDiscShow(true)} title="Read the safety notice again">Reference only — safety notice</button>
     )}
 
-    {/* Admin-only J-box circuit editor (full-screen overlay + print table) */}
     {jboxEdit && admin && (
       <JboxEditor sheets={mergedSheets} onSave={saveJbox} onClose={() => setJboxEdit(false)} />
     )}
 
-    {/* Print-only panel schedule (suppressed while the J-box editor is open) */}
     {panel && !jboxEdit && (
       <div className="print-schedule">
         <div className="ps-head">
           <img className="ps-logo" src="/dinto-logo.png" alt="Dinto Electrical Contractors" />
           <div className="ps-title">PANEL: {panel.panel}</div>
-          <div className="ps-power" style={{ color: plive ? '#137a2e' : '#b3202f' }}>PANEL POWER: {plive ? 'LIVE' : 'DEAD'}</div>
           <div className="ps-meta">
             <div>PANEL LOCATION: {panel.meta ? panel.meta.location : ''}</div>
             <div>DATE TYPED: {panel.meta ? panel.meta.date : ''}{panel.meta && panel.meta.editedBy ? ` (${panel.meta.editedBy})` : ''}</div>
@@ -585,7 +580,6 @@ export default function App() {
           </div>
           <div id="print-qr" className="ps-qr" />
         </div>
-        <div className="ps-legend">Circuit no. color — <b style={{ color: '#137a2e' }}>green = live</b>, <b style={{ color: '#b3202f' }}>red = dead</b>. Status as of print; scan the QR for current status.</div>
         <table className="ps-table">
           <colgroup>
             <col style={{ width: '4%' }} /><col style={{ width: '6%' }} /><col style={{ width: '6%' }} /><col style={{ width: '34%' }} />
