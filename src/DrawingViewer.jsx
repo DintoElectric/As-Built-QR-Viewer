@@ -356,9 +356,10 @@ function buildOverlay(sheet, panel, selCircuit, zoom, hasImg, circuitLive) {
       cktTexts.push(
         <text key={'ct' + i} x={x} y={ty} fontSize={fs} fontFamily="Arial, Helvetica, sans-serif"
           style={{ paintOrder: 'stroke' }} stroke="#ffffff" strokeWidth={fs * 0.18} strokeLinejoin="round">
-          {cks.map((c, j) => (
-            <tspan key={j} dx={j ? fs * 0.42 : 0} fill={circuitLive(b.panel, c) ? LIVE : DEAD}>{c}</tspan>
-          ))}
+          {cks.flatMap((c, j) => {
+            const num = <tspan key={'n' + j} dx={j ? fs * 0.3 : 0} fill={circuitLive(b.panel, c) ? LIVE : DEAD}>{c}</tspan>;
+            return j ? [<tspan key={'c' + j} fill="#333333">,</tspan>, num] : [num];
+          })}
         </text>
       );
     });
