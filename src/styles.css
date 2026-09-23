@@ -577,3 +577,7 @@ button:focus:not(:focus-visible) { outline: none; }
 }
 /* Use the default @page for the drawing print (size injected at print time) */
 .drawing-print { page: auto; }
+/* ---- Live = red (energized / danger), Dead = green (safe) — overrides earlier lamp colors ---- */
+.lamp.on { background: #e5484d; box-shadow: 0 0 6px rgba(229, 72, 77, 0.9); }
+.lamp.off { background: #2fbf4e; box-shadow: none; }
+.status-summary.has-live { box-shadow: inset 0 0 0 1px rgba(229, 72, 77, 0.5); }
